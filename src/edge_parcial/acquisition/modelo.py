@@ -19,9 +19,12 @@ COLUMNAS_FRAMES = [
     "t_last_ns",
     "t_decode_ini_ns",
     "t_ready_ns",
+    "t_encode_ini_ns",
+    "t_encode_fin_ns",
     "n_recv",
     "payload_bytes",
     "header_bytes",
+    "raw_bytes",
     "jpeg_valid",
     "width",
     "height",
@@ -86,6 +89,10 @@ class Resumen:
     abandonada: bool = False
     # Hubo una reconexión entre fotogramas medidos (warmup=0): no se promedia en silencio.
     con_reconexiones: bool = False
+    # Cámara local: resolución pedida y real (shape del primer fotograma).
+    resolucion_solicitada: tuple | None = None
+    resolucion_real: tuple | None = None
+    motivos_extra: list = field(default_factory=list)
     cabeceras_faltantes: dict = field(default_factory=dict)  # nombre -> filas
     bytes_recv_por_conexion: list = field(default_factory=list)
     advertencias: list = field(default_factory=list)  # una vez por tipo
@@ -127,7 +134,7 @@ class Resumen:
         if self.esperadas and self.cabeceras_faltantes:
             falt = ", ".join(sorted(self.cabeceras_faltantes))
             motivos.append(f"cabeceras obligatorias ausentes: {falt}")
-        return motivos
+        return motivos + list(self.motivos_extra)
 
     def a_dict(self) -> dict:
         return {
@@ -140,6 +147,8 @@ class Resumen:
             "n_recv_1": self.n_recv_1,
             "abandonada": self.abandonada,
             "con_reconexiones": self.con_reconexiones,
+            "resolucion_solicitada": self.resolucion_solicitada,
+            "resolucion_real": self.resolucion_real,
             "cabeceras_faltantes": dict(self.cabeceras_faltantes),
             "bytes_recv_por_conexion": list(self.bytes_recv_por_conexion),
             "bytes_recv_total": self.bytes_recv_total,

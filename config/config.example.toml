@@ -24,6 +24,11 @@ url_imagen_fija = ""
 [local]
 indice_camara = 0
 distancia_m = 0.0
+# Resolución SOLICITADA a la cámara (nativa del MacBook Air M4). La real se registra
+# aparte; si difiere, la fuente queda inválida. El FPS no se fuerza.
+ancho = 1920
+alto = 1080
+jpeg_calidad = 50              # JPEG de referencia (solo tamaño y costo; fuera del e2e)
 
 [propagacion]
 # Velocidad de propagación para d/v (aire: c; se usa c por ser enlace inalámbrico).

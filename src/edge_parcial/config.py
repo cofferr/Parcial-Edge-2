@@ -28,6 +28,9 @@ class FuenteRed:
 class FuenteLocal:
     indice_camara: int
     distancia_m: float
+    ancho: int
+    alto: int
+    jpeg_calidad: int
 
 
 @dataclass(frozen=True)
@@ -118,6 +121,9 @@ def cargar_config(ruta: Path | str | None = None) -> Config:
         local=FuenteLocal(
             indice_camara=int(_clave(local, "local", "indice_camara")),
             distancia_m=float(_clave(local, "local", "distancia_m")),
+            ancho=int(_clave(local, "local", "ancho")),
+            alto=int(_clave(local, "local", "alto")),
+            jpeg_calidad=int(_clave(local, "local", "jpeg_calidad")),
         ),
         v_propagacion_m_s=float(_clave(prop, "propagacion", "v_m_s")),
         lector=lector,

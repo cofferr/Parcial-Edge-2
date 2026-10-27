@@ -64,3 +64,16 @@ def test_falta_seccion_lector(tmp_path):
     ruta.write_text(texto)
     with pytest.raises(ErrorConfig, match=r"\[lector\]"):
         cargar_config(ruta)
+
+
+def test_camara_local_en_config():
+    loc = cargar_config(RUTA_EJEMPLO).local
+    assert (loc.ancho, loc.alto, loc.jpeg_calidad) == (1920, 1080, 50)
+
+
+def test_falta_clave_de_resolucion_local(tmp_path):
+    texto = RUTA_EJEMPLO.read_text().replace("ancho = 1920", "otro = 1920")
+    ruta = tmp_path / "c.toml"
+    ruta.write_text(texto)
+    with pytest.raises(ErrorConfig, match="ancho"):
+        cargar_config(ruta)
