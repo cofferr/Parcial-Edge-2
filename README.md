@@ -7,3 +7,4 @@ de tres fuentes de video (cámara local, ESP32-CAM, DroidCam).
 - Fórmulas y archivos que las calculan: `docs/matriz_formulas.md`
 - Configuración: copiar `config/config.example.toml` a `config/config.toml`
 - Pruebas: `uv run pytest` y `uv run ruff check .`
+- Verificación manual del lector con hardware: `docs/verificacion_lector.md`
