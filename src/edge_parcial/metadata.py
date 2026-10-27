@@ -29,6 +29,10 @@ PAQUETES = [
 # Clave del RSSI en el JSON de /status (X-Rssi-Dbm es solo la cabecera de stream/capture).
 CLAVE_RSSI = "rssi"
 FUENTES = ("local", "esp32", "droidcam")
+MOTIVO_EFECTOS = (
+    "no se confirmó que Center Stage y los efectos de video estén desactivados "
+    "(--confirmo-efectos-desactivados)"
+)
 TIMEOUT_STATUS_S = 3.0
 REINTENTOS_STATUS = 1
 
@@ -200,11 +204,14 @@ def recolectar_metadata(
     fuentes: tuple[str, ...] = FUENTES,
     resoluciones: dict | None = None,
     cpu_duracion_s: float = 2.0,
+    efectos_confirmados: bool = False,
 ) -> dict:
     """Metadatos al inicio de la corrida.
 
     Solo las fuentes usadas cuentan para la validez. /status de la ESP32-CAM se
     consulta únicamente si "esp32" está en `fuentes` (stream cerrado).
+    Cámara local: sin la confirmación manual de que Center Stage y los efectos de video
+    están desactivados (`efectos_confirmados`), la fuente queda inválida.
     """
     desconocidas = set(fuentes) - set(FUENTES)
     if desconocidas:
@@ -216,6 +223,11 @@ def recolectar_metadata(
         status_inicio = status
         if not status["ok"]:
             validez["esp32"] = {"valida": False, "motivos": [status["error"]]}
+    camara_local = None
+    if "local" in fuentes:
+        camara_local = {"efectos_desactivados_confirmados": bool(efectos_confirmados)}
+        if not efectos_confirmados:
+            validez["local"] = {"valida": False, "motivos": [MOTIVO_EFECTOS]}
     meta = {
         "run_id": run_id,
         "fecha": datetime.now().astimezone().isoformat(),
@@ -234,9 +246,44 @@ def recolectar_metadata(
         "esp32_status_inicio": status_inicio,
         "wifi_mac_inicio": leer_wifi_mac(),
         "resoluciones": resoluciones or {},
+        "camara_local": camara_local,
         "cpu": muestrear_cpu(cpu_duracion_s),
         "validez_por_fuente": validez,
     }
+    _validar(meta)
+    return meta
+
+
+def registrar_camara_local(meta: dict, propiedades: dict, resumen: dict) -> dict:
+    """Guarda resolución solicitada y real, FPS reportado y propiedades de la cámara.
+
+    Si la resolución real difiere de la solicitada (o la fuente se abandonó), la fuente
+    local queda inválida con el motivo. No se fuerza el FPS: se registra el reportado.
+    """
+    cam = meta.setdefault("camara_local", {}) or {}
+    solicitada = resumen.get("resolucion_solicitada")
+    real = resumen.get("resolucion_real")
+    cam.update(
+        {
+            "resolucion_solicitada": list(solicitada) if solicitada else None,
+            "resolucion_real": list(real) if real else None,
+            "fps_reportado": propiedades.get("fps_reportado"),
+            "backend": propiedades.get("backend"),
+            "fourcc": propiedades.get("fourcc"),
+            "apertura_ns": propiedades.get("apertura_ns"),
+            "indice": propiedades.get("indice"),
+        }
+    )
+    meta["camara_local"] = cam
+    if real:
+        meta.setdefault("resoluciones", {})["local"] = list(real)
+    validez = meta["validez_por_fuente"].setdefault(
+        "local", {"valida": True, "motivos": []}
+    )
+    for motivo in resumen.get("motivos_invalida", []):
+        if motivo not in validez["motivos"]:
+            validez["motivos"].append(motivo)
+    validez["valida"] = not validez["motivos"]
     _validar(meta)
     return meta
 

@@ -6,6 +6,13 @@ Uso (una fuente a la vez: la ESP32-CAM admite un solo cliente):
     uv run python scripts/verificar_lector.py --fuente droidcam      --segundos 30
 
 Antes de la ESP32: cierra cualquier otro cliente de /stream (navegador, curl, otra corrida).
+
+Cámara local (apertura en el hilo principal, lectura en el hilo lector):
+    uv run python scripts/verificar_lector.py --fuente local --segundos 30 \\
+        --confirmo-efectos-desactivados
+Sin --confirmo-efectos-desactivados la corrida local queda valida:false (Center Stage y
+los efectos de video no se pueden leer desde OpenCV; se confirman a mano, ver
+docs/verificacion_lector.md).
 """
 
 import argparse
@@ -14,7 +21,10 @@ import sys
 import time
 from pathlib import Path
 
+from edge_parcial import metadata as meta_mod
+from edge_parcial.acquisition.codificador_jpeg import CodificadorJPEG
 from edge_parcial.acquisition.decodificador import Decodificador
+from edge_parcial.acquisition.lector_local import ErrorCamara, LectorLocal, crear_camara
 from edge_parcial.acquisition.lector_red import (
     LectorCapture,
     LectorStream,
@@ -31,6 +41,7 @@ FUENTES = {
     "esp32-stream": (spec_esp32_stream, LectorStream),
     "esp32-capture": (spec_esp32_capture, LectorCapture),
     "droidcam": (spec_droidcam, LectorStream),
+    "local": (None, LectorLocal),
 }
 
 
@@ -90,7 +101,65 @@ def imprimir(res: dict, resumen: dict, ruta) -> None:
         print("Corrida válida para esta fuente.")
 
 
-def main(argv: list[str] | None = None) -> int:
+def _correr_local(args, cfg, camara) -> int:
+    run_id = crear_run_id("verif-local")
+    destino = args.salida / run_id
+    print(
+        f"Verificando cámara local (índice {cfg.local.indice_camara}) durante "
+        f"{args.segundos:.0f} s -> {destino}"
+    )
+    if not args.confirmo_efectos_desactivados:
+        print(
+            "AVISO: sin --confirmo-efectos-desactivados la corrida local quedará valida:false."
+        )
+    camara = camara or crear_camara(cfg)
+    try:
+        propiedades = camara.abrir()  # hilo principal (autorización de AVFoundation)
+    except ErrorCamara as e:
+        print(f"Error de cámara: {e}", file=sys.stderr)
+        return 3
+    print(f"Cámara abierta: {propiedades}")
+    meta = meta_mod.recolectar_metadata(
+        cfg,
+        run_id,
+        fuentes=("local",),
+        efectos_confirmados=args.confirmo_efectos_desactivados,
+    )
+    registro = RegistroCSV(destino)
+    cola = queue.Queue(maxsize=cfg.lector.cola_max)
+    codificador = CodificadorJPEG(cola, registro.fila, calidad=cfg.local.jpeg_calidad)
+    lector = LectorLocal(
+        camara, propiedades, cfg.lector, cfg.local.ancho, cfg.local.alto, run_id,
+        args.condicion, cola, registro.fila, registro.evento, None,
+    )  # fmt: skip
+    codificador.start()
+    lector.start()
+    try:
+        fin = time.monotonic() + args.segundos
+        while time.monotonic() < fin and lector.is_alive():
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        print("Interrumpido; cerrando...")
+    finally:
+        lector.detener()
+        lector.join(10)
+        codificador.cerrar()
+        registro.cerrar()
+        camara.cerrar()
+    resumen = lector.resumen.a_dict()
+    meta_mod.registrar_camara_local(meta, propiedades, resumen)
+    meta_mod.cerrar_metadata(meta, cfg)
+    ruta_meta = meta_mod.escribir_metadata(meta, args.salida)
+    resumen["motivos_invalida"] = meta["validez_por_fuente"]["local"]["motivos"]
+    imprimir(resumir_frames(registro.ruta_frames), resumen, registro.ruta_frames)
+    print(
+        f"Metadata: {ruta_meta}  (resolución real {meta['camara_local']['resolucion_real']}, "
+        f"FPS reportado {meta['camara_local']['fps_reportado']})"
+    )
+    return 0
+
+
+def main(argv: list[str] | None = None, *, camara=None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
@@ -103,6 +172,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--puerto", type=int, help="sustituye el puerto de la config (pruebas)"
     )
+    ap.add_argument(
+        "--confirmo-efectos-desactivados",
+        action="store_true",
+        help="cámara local: confirmo que Center Stage y los efectos de video están "
+        "desactivados (se guarda en la metadata; sin esto la corrida local es inválida)",
+    )
     args = ap.parse_args(argv)
 
     try:
@@ -110,6 +185,8 @@ def main(argv: list[str] | None = None) -> int:
     except ErrorConfig as e:
         print(f"Error de configuración: {e}", file=sys.stderr)
         return 2
+    if args.fuente == "local":
+        return _correr_local(args, cfg, camara)
     crear_spec, clase = FUENTES[args.fuente]
     spec = crear_spec(cfg)
     if args.host or args.puerto:

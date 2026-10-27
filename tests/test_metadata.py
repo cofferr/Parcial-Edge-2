@@ -221,7 +221,9 @@ def test_fw_cambiado_invalida_serie(monkeypatch):
     monkeypatch.setattr(metadata, "leer_wifi_mac", dict)
     with Servidor(b'{"fw": "A", "rssi": -50}') as s:
         cfg = cfg_con(s.puerto)
-        meta = metadata.recolectar_metadata(cfg, "r1", cpu_duracion_s=0.1)
+        meta = metadata.recolectar_metadata(
+            cfg, "r1", fuentes=("esp32",), cpu_duracion_s=0.1
+        )
         assert meta["valida"]
         s.cuerpo = b'{"fw": "B", "rssi": -50}'
         meta = metadata.cerrar_metadata(meta, cfg)
@@ -233,7 +235,9 @@ def test_fw_estable_serie_valida(monkeypatch):
     monkeypatch.setattr(metadata, "leer_wifi_mac", dict)
     with Servidor(b'{"fw": "A", "rssi": -50}') as s:
         cfg = cfg_con(s.puerto)
-        meta = metadata.recolectar_metadata(cfg, "r1", cpu_duracion_s=0.1)
+        meta = metadata.recolectar_metadata(
+            cfg, "r1", fuentes=("esp32",), cpu_duracion_s=0.1
+        )
         meta = metadata.cerrar_metadata(meta, cfg)
     assert meta["valida"]
     assert meta["esp32_status_fin"]["fw"] == "A"
@@ -245,6 +249,8 @@ def test_escribir_y_releer(tmp_path, monkeypatch):
         meta = metadata.recolectar_metadata(
             cfg_con(s.puerto),
             "20260101-000000-todas",
+            fuentes=("esp32", "local"),
+            efectos_confirmados=True,
             resoluciones={"local": [1920, 1080]},
             cpu_duracion_s=0.1,
         )
@@ -280,3 +286,56 @@ def test_commit_actual_fuera_de_repo(tmp_path):
 )
 def test_commit_actual_en_repo():
     assert len(metadata.commit_actual()["hash"]) == 40
+
+
+def test_camara_local_sin_confirmar_efectos_es_invalida(monkeypatch):
+    monkeypatch.setattr(metadata, "leer_wifi_mac", dict)
+    cfg = cargar_config(RUTA_EJEMPLO)
+    meta = metadata.recolectar_metadata(
+        cfg, "r1", fuentes=("local",), cpu_duracion_s=0.1
+    )
+    assert not meta["valida"]
+    assert meta["camara_local"] == {"efectos_desactivados_confirmados": False}
+    assert meta["motivos_invalida"] == [f"local: {metadata.MOTIVO_EFECTOS}"]
+    assert meta["esp32_status_inicio"] is None  # no usa la ESP32
+
+
+def test_camara_local_confirmada_y_resolucion_correcta_es_valida(monkeypatch):
+    monkeypatch.setattr(metadata, "leer_wifi_mac", dict)
+    cfg = cargar_config(RUTA_EJEMPLO)
+    meta = metadata.recolectar_metadata(
+        cfg, "r1", fuentes=("local",), cpu_duracion_s=0.1, efectos_confirmados=True
+    )
+    assert meta["valida"]
+    props = {"fps_reportado": 30.0, "backend": "AVFOUNDATION", "fourcc": "yuvs"}
+    resumen = {
+        "resolucion_solicitada": (1920, 1080),
+        "resolucion_real": (1920, 1080),
+        "motivos_invalida": [],
+    }
+    metadata.registrar_camara_local(meta, props, resumen)
+    assert meta["valida"] and meta["camara_local"]["fps_reportado"] == 30.0
+    assert meta["camara_local"]["resolucion_real"] == [1920, 1080]
+    assert meta["resoluciones"]["local"] == [1920, 1080]
+
+
+def test_resolucion_real_distinta_invalida_la_fuente_local(monkeypatch):
+    monkeypatch.setattr(metadata, "leer_wifi_mac", dict)
+    cfg = cargar_config(RUTA_EJEMPLO)
+    meta = metadata.recolectar_metadata(
+        cfg,
+        "r1",
+        fuentes=("local", "droidcam"),
+        cpu_duracion_s=0.1,
+        efectos_confirmados=True,
+    )
+    motivo = "resolución real 1280x720 distinta de la solicitada 1920x1080"
+    resumen = {
+        "resolucion_solicitada": (1920, 1080),
+        "resolucion_real": (1280, 720),
+        "motivos_invalida": [motivo],
+    }
+    metadata.registrar_camara_local(meta, {}, resumen)
+    assert not meta["valida"]
+    assert meta["validez_por_fuente"]["local"]["motivos"] == [motivo]
+    assert meta["validez_por_fuente"]["droidcam"]["valida"]  # solo afecta a la local

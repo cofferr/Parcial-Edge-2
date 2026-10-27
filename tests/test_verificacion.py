@@ -120,3 +120,118 @@ def test_resumen_csv_reconexion_en_warmup_no_marca(tmp_path):
 def test_resumen_csv_capture_no_marca(tmp_path):
     ruta = _csv(tmp_path, [("/capture", 0, 0), ("/capture", 0, 1), ("/capture", 0, 2)])
     assert resumir_frames(ruta)["con_reconexiones"] is False
+
+
+# -- cámara local ------------------------------------------------------------
+
+
+def _config_pequena(tmp_path, ancho=192, alto=108):
+    texto = RUTA_EJEMPLO.read_text().replace("ancho = 1920", f"ancho = {ancho}")
+    texto = texto.replace("alto = 1080", f"alto = {alto}")
+    ruta = tmp_path / "config.toml"
+    ruta.write_text(texto)
+    return ruta
+
+
+def _sin_hardware(monkeypatch):
+    from edge_parcial import metadata
+
+    monkeypatch.setattr(metadata, "leer_wifi_mac", dict)
+    monkeypatch.setattr(metadata, "muestrear_cpu", lambda *a, **k: {"media_pct": 0.0})
+
+
+def _correr_local(tmp_path, monkeypatch, camara, extra=(), ancho=192, alto=108):
+    import json
+
+    _sin_hardware(monkeypatch)
+    rc = cargar_script().main(
+        [
+            "--fuente", "local", "--segundos", "1.5",
+            "--config", str(_config_pequena(tmp_path, ancho, alto)),
+            "--salida", str(tmp_path / "raw"), *extra,
+        ],
+        camara=camara,
+    )  # fmt: skip
+    carpeta = next((tmp_path / "raw").iterdir())
+    return rc, json.loads((carpeta / "metadata.json").read_text()), carpeta
+
+
+def test_script_local_confirmado_es_valido_y_guarda_la_metadata(
+    tmp_path, monkeypatch, capsys
+):
+    from edge_parcial.acquisition.lector_local import CamaraSimulada
+
+    cam = CamaraSimulada(192, 108, intervalo_s=0.02, fps_reportado=30.0)
+    rc, meta, carpeta = _correr_local(
+        tmp_path, monkeypatch, cam, extra=["--confirmo-efectos-desactivados"]
+    )
+    assert rc == 0 and meta["valida"] and meta["motivos_invalida"] == []
+    c = meta["camara_local"]
+    assert c["efectos_desactivados_confirmados"] is True
+    assert c["resolucion_solicitada"] == [192, 108] and c["resolucion_real"] == [
+        192,
+        108,
+    ]
+    assert c["fps_reportado"] == 30.0 and meta["resoluciones"]["local"] == [192, 108]
+    assert meta["fuentes_usadas"] == ["local"] and not cam.abierta  # cámara liberada
+    res = resumir_frames(carpeta / "frames.csv")
+    assert res["filas_warmup"] == 20 and res["filas_medidas"] > 0
+    assert res["raw_bytes_medio"] == 192 * 108 * 3
+    assert res["jpeg_ref_bytes_medio"] > 0 and res["codificacion_ms_p50"] > 0
+    assert 15 < res["lectura_ms_p50"] < 40  # ~ periodo simulado
+    assert 25 < res["fps_medio"] < 60
+    assert res["resoluciones"] == ["192x108"]
+    assert "Corrida válida" in capsys.readouterr().out
+
+
+def test_script_local_sin_confirmacion_de_efectos_es_invalido(
+    tmp_path, monkeypatch, capsys
+):
+    from edge_parcial.acquisition.lector_local import CamaraSimulada
+
+    rc, meta, _ = _correr_local(
+        tmp_path, monkeypatch, CamaraSimulada(192, 108, intervalo_s=0.02)
+    )
+    assert rc == 0 and not meta["valida"]
+    assert meta["camara_local"]["efectos_desactivados_confirmados"] is False
+    assert "--confirmo-efectos-desactivados" in meta["motivos_invalida"][0]
+    assert "CORRIDA INVÁLIDA" in capsys.readouterr().out
+
+
+def test_script_local_resolucion_distinta_invalida(tmp_path, monkeypatch):
+    from edge_parcial.acquisition.lector_local import CamaraSimulada
+
+    cam = CamaraSimulada(128, 72, intervalo_s=0.02)  # la cámara entrega otra resolución
+    _, meta, _ = _correr_local(
+        tmp_path, monkeypatch, cam, extra=["--confirmo-efectos-desactivados"]
+    )
+    assert not meta["valida"]
+    assert meta["camara_local"]["resolucion_real"] == [128, 72]
+    assert any("128x72" in m and "192x108" in m for m in meta["motivos_invalida"])
+
+
+def test_script_local_no_fuerza_el_fps():
+    import inspect
+
+    from edge_parcial.acquisition import lector_local
+
+    assert "CAP_PROP_FPS" in inspect.getsource(
+        lector_local.CamaraCV2.abrir
+    )  # solo lo lee
+    assert "set(cv2.CAP_PROP_FPS" not in inspect.getsource(lector_local)
+
+
+def test_script_local_error_si_no_abre_la_camara(tmp_path, monkeypatch, capsys):
+    from edge_parcial.acquisition.lector_local import ErrorCamara
+
+    class NoAbre:
+        def abrir(self):
+            raise ErrorCamara("no abre")
+
+    _sin_hardware(monkeypatch)
+    rc = cargar_script().main(
+        ["--fuente", "local", "--config", str(_config_pequena(tmp_path)),
+         "--salida", str(tmp_path / "raw")],
+        camara=NoAbre(),
+    )  # fmt: skip
+    assert rc == 3 and "no abre" in capsys.readouterr().err
