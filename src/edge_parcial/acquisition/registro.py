@@ -48,7 +48,7 @@ class RegistroCSV:
         if self._error is not None:
             raise self._error
 
-    def __enter__(self) -> RegistroCSV:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *args) -> None:
