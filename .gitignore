@@ -1,0 +1,27 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Configuración local (IPs de cada sesión)
+config/config.toml
+
+# Credenciales del firmware
+firmware/**/secrets.h
+
+# Datos: crudos, procesados y grabaciones (contienen rostros) fuera de git
+data/raw/*
+data/processed/*
+data/recordings/*
+!data/**/.gitkeep
+
+# Cachés y sistema
+.pytest_cache/
+.ruff_cache/
+.DS_Store

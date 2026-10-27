@@ -1,0 +1,29 @@
+# Copia a config/config.toml (fuera de git) y rellena las IP de la sesión.
+
+[red]
+gateway_ip = "192.168.43.1"   # puerta de enlace del hotspot
+
+[esp32]
+ip = "192.168.43.100"
+distancia_m = 1.0
+# Velocidad nominal del enlace (IEEE 802.11 b/g/n 2,4 GHz según hoja técnica del ESP32).
+velocidad_nominal_bps = 72_200_000
+velocidad_nominal_cita = "Espressif, ESP32 Series Datasheet: 802.11n HT20, MCS7, 72,2 Mbps"
+
+[droidcam]
+ip = "192.168.43.1"
+puerto = 4747
+distancia_m = 1.0
+# Tasa de transmisión del Wi-Fi del Mac (system_profiler SPAirPortDataType); copiar el valor observado.
+velocidad_nominal_bps = 0
+velocidad_nominal_cita = "system_profiler SPAirPortDataType, Transmit Rate (Mac), fecha de la sesión"
+# URL de imagen fija para el extremo a extremo; vacío = abrir stream hasta primer fotograma.
+url_imagen_fija = ""
+
+[local]
+indice_camara = 0
+distancia_m = 0.0
+
+[propagacion]
+# Velocidad de propagación para d/v (aire: c; se usa c por ser enlace inalámbrico).
+v_m_s = 299_792_458
