@@ -37,6 +37,8 @@ def estado_fuente(corrida: Corrida, fuente: str) -> tuple[bool, str]:
 
 
 def con_reconexiones(corrida: Corrida, fuente: str) -> bool:
+    if corrida.tarea == "1.5":  # e2e: cada muestra abre su propia conexión
+        return False
     if corrida.meta.get("lectores", {}).get(fuente, {}).get("con_reconexiones"):
         return True
     df = medidas(corrida, fuente, solo_validas=False)

@@ -93,3 +93,62 @@ def escribir_corrida(
     meta.update(extra_meta or {})
     (carpeta / "metadata.json").write_text(json.dumps(meta), encoding="utf-8")
     return carpeta
+
+
+def filas_e2e(
+    run_id, source, endpoint, n, warmup=20, payload=3000, resp_ms=108.0, ttx_ms=4.0,
+    cola_ms=0.5, decode_ms=2.0, periodo_ms=300.0, capture_us=None, flush_us=None,
+    jpeg_us=None, t0=T0,
+):  # fmt: skip
+    """Filas de e2e (una conexión por muestra): e2e = resp + ttx + cola + decodificación."""
+    filas = []
+    for i in range(warmup + n):
+        f = fila_vacia()
+        t_req = t0 + int(i * periodo_ms * 1e6)
+        t_first = t_req + int(resp_ms * 1e6)
+        t_last = t_first + int(ttx_ms * 1e6)
+        t_dec = t_last + int(cola_ms * 1e6)
+        f.update(
+            run_id=run_id, source=source, endpoint=endpoint, condition="e2e", seq=i,
+            warmup=int(i < warmup), conexion=i, t_request_ns=t_req, t_first_ns=t_first,
+            t_last_ns=t_last, t_decode_ini_ns=t_dec, t_ready_ns=t_dec + int(decode_ms * 1e6),
+            n_recv=3, payload_bytes=payload, header_bytes=200, jpeg_valid=1, width=320,
+            height=240, capture_us=capture_us, flush_us=flush_us, jpeg_us=jpeg_us,
+            rssi_dbm=-50 if source == "esp32" else None, descartado=0,
+        )  # fmt: skip
+        filas.append(f)
+    return filas
+
+
+def escribir_tprop(raw: Path, run_id: str, rtt_ms: dict, n=100, valida=True):
+    """data/raw/<run_id>/{tprop.csv, metadata.json} con RTT ICMP constantes por destino."""
+    import csv
+
+    from edge_parcial.tprop import COLUMNAS
+
+    carpeta = Path(raw) / run_id
+    carpeta.mkdir(parents=True)
+    with open(carpeta / "tprop.csv", "w", newline="") as fh:
+        w = csv.DictWriter(fh, COLUMNAS)
+        w.writeheader()
+        for source, rtt in rtt_ms.items():
+            for i in range(n):
+                w.writerow(
+                    {
+                        "run_id": run_id,
+                        "source": source,
+                        "metodo": "icmp",
+                        "condicion": "reposo",
+                        "host": "h",
+                        "seq": i,
+                        "rtt_ns": int(rtt * 1e6),
+                        "perdido": 0,
+                    }
+                )
+    meta = {
+        "run_id": run_id,
+        "valida": valida,
+        "contexto": {"tarea": "1.4"},
+        "fuentes_usadas": [],
+    }
+    (carpeta / "metadata.json").write_text(json.dumps(meta), encoding="utf-8")

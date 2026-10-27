@@ -91,3 +91,39 @@ def cargar_tprop(carpeta: Path | str) -> pd.DataFrame:
         Path(carpeta) / "tprop.csv",
         dtype={"rtt_ns": "Int64", "perdido": "Int64", "seq": "Int64"},
     )
+
+
+def descubrir_tprop(raw: Path | str) -> list[tuple[dict, pd.DataFrame]]:
+    """Corridas de la Tarea 1.4 en `raw` (metadata.json + tprop.csv), de la más antigua a la más reciente."""
+    import json
+
+    salida = []
+    for ruta in sorted(Path(raw).glob("*/metadata.json")):
+        meta = json.loads(ruta.read_text(encoding="utf-8"))
+        if (
+            meta.get("contexto", {}).get("tarea") == "1.4"
+            and (ruta.parent / "tprop.csv").is_file()
+        ):
+            salida.append((meta, cargar_tprop(ruta.parent)))
+    return salida
+
+
+def elegir_tprop(
+    raw: Path | str, cfg: Config
+) -> tuple[pd.DataFrame | None, str | None]:
+    """Resumen de la corrida de tprop válida más reciente (None si no hay)."""
+    for meta, df in reversed(descubrir_tprop(raw)):
+        if meta.get("valida"):
+            return resumen_tprop(df, cfg), meta["run_id"]
+    return None, None
+
+
+def tabla_tprop(res: pd.DataFrame) -> pd.DataFrame:
+    """Tabla 1.4: RTT, tprop = RTT/2, contraste TCP, d/v y RTT bajo carga (aparte)."""
+    cols = [
+        "fuente", "rtt_icmp_ms_n", "rtt_icmp_ms_media", "rtt_icmp_ms_p95", "tprop_icmp_ms_media",
+        "tprop_icmp_ms_minimo", "tprop_icmp_ms_maximo", "tprop_icmp_ms_desviacion",
+        "tprop_icmp_ms_p50", "tprop_icmp_ms_p95", "muestras_icmp_suficientes",
+        "rtt_tcp_ms_media", "tprop_fisico_ns", "rtt_carga_ms_media",
+    ]  # fmt: skip
+    return res.reindex(columns=cols)
