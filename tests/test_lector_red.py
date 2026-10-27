@@ -254,6 +254,91 @@ def test_corte_a_mitad_de_stream_reconecta_y_marca():
     assert len(srv.peticiones) == 2
 
 
+def _guion_con_corte(a, b):
+    cortado = parte(hacer_jpeg(99))
+
+    def manejador(conn, req, n):
+        if n == 0:
+            enviar(
+                conn, cabecera_http() + b"".join(parte(j) for j in a) + cortado[:200]
+            )
+            return
+        enviar(conn, cabecera_http() + b"".join(parte(j) for j in b))
+        esperar_cliente(conn)
+
+    return manejador
+
+
+def test_reconexion_entre_fotogramas_medidos_marca_con_reconexiones():
+    a = [hacer_jpeg(i) for i in range(4)]
+    b = [hacer_jpeg(10 + i) for i in range(4)]
+    _, _, res, *_ = correr(
+        _guion_con_corte(a, b), n_total=8, p=params(warmup_fotogramas=2)
+    )
+    assert res.con_reconexiones and res.a_dict()["con_reconexiones"] is True
+
+
+def test_reconexion_solo_durante_el_warmup_no_marca():
+    a = [hacer_jpeg(i) for i in range(2)]
+    b = [hacer_jpeg(10 + i) for i in range(6)]
+    filas, _, res, *_ = correr(
+        _guion_con_corte(a, b), n_total=8, p=params(warmup_fotogramas=2)
+    )
+    assert [f["conexion"] for f in filas if not f["warmup"]] == [1] * 6
+    assert res.reconexiones == 1 and not res.con_reconexiones
+
+
+def test_sin_reconexion_no_marca():
+    _, _, res, *_ = correr(guion_stream([hacer_jpeg(1)] * 5), n_total=5)
+    assert not res.con_reconexiones
+
+
+def test_capture_nunca_marca_con_reconexiones():
+    _, _, res, *_ = correr(
+        guion_capture(),
+        clase=LectorCapture,
+        ruta="/capture",
+        n_total=5,
+        p=params(warmup_fotogramas=1),
+    )
+    assert not res.con_reconexiones
+
+
+def test_rssi_acepta_enteros_con_signo():
+    for crudo, esperado in [("-34", -34), ("+0", 0), ("0", 0), ("-0", 0), (" -7 ", -7)]:
+        j = hacer_jpeg(1)
+        filas, *_ = correr(
+            guion_stream(
+                [j], cab=lambda i, c=crudo: {**cabeceras_esp32(i), "X-Rssi-Dbm": c}
+            ),
+            esperadas=ESP_STREAM,
+            n_total=1,
+        )
+        assert filas[0]["rssi_dbm"] == esperado, crudo
+        assert filas[0]["cabeceras_faltantes"] is None
+
+
+def test_rssi_decimal_o_texto_es_faltante_y_guarda_el_valor_crudo(caplog):
+    for crudo in ["-34.5", "abc", "1_0", "--3", "", "٣"]:
+        with caplog.at_level(logging.WARNING, logger="edge_parcial.lector"):
+            filas, _, res, *_ = correr(
+                guion_stream(
+                    [hacer_jpeg(1)],
+                    cab=lambda i, c=crudo: {**cabeceras_esp32(i), "X-Rssi-Dbm": c},
+                ),
+                esperadas=ESP_STREAM,
+                n_total=1,
+            )
+        f = filas[0]
+        assert f["rssi_dbm"] is None and f["cabeceras_faltantes"] == "X-Rssi-Dbm", crudo
+        # El valor crudo es el que llegó por el cable (los encabezados se leen en latin-1).
+        recibido = crudo.encode("utf-8").decode("latin-1")
+        assert f["error"] == f"cabecera X-Rssi-Dbm inválida: {recibido!r}"
+        assert any(repr(recibido) in a for a in res.advertencias)
+        assert res.errores == 0  # el diagnóstico no cuenta como error de protocolo
+    assert res.motivos_invalida()
+
+
 def test_abandono_tras_agotar_reintentos():
     def manejador(conn, req, n):
         return  # cierra de inmediato

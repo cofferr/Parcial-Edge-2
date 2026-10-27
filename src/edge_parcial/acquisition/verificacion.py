@@ -53,7 +53,11 @@ def resumir_frames(ruta: Path | str) -> dict:
     def serie(col: str) -> list[int]:
         return [v for r in ok if (v := _num(r[col])) is not None]
 
+    # Reconexión dentro de las filas medidas (solo /stream y /video; en /capture cada
+    # muestra abre su conexión y `conexion` = seq, así que no aplica).
+    reconecta = {r["conexion"] for r in filas if r["endpoint"] != "/capture"}
     return {
+        "con_reconexiones": len(reconecta) > 1,
         "filas_total": len(todas),
         "filas_warmup": len(warmup),
         "filas_medidas": len(filas),

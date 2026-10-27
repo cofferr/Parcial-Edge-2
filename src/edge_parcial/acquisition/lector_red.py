@@ -9,6 +9,7 @@ el socket.
 
 import logging
 import queue
+import re
 import socket
 import threading
 import time
@@ -74,11 +75,14 @@ class _Parada(Exception):
     """Se pidió detener el lector."""
 
 
+_ENTERO_CON_SIGNO = re.compile(r"[+-]?[0-9]+")
+
+
 def _entero_cabecera(valor: str | None) -> int | None:
-    try:
-        return int(valor.strip()) if valor is not None else None
-    except ValueError:
+    """Entero ASCII con signo opcional (-34, +0). Decimales o texto -> None."""
+    if valor is None or not _ENTERO_CON_SIGNO.fullmatch(valor.strip()):
         return None
+    return int(valor.strip())
 
 
 class _LectorBase(threading.Thread):
@@ -107,6 +111,9 @@ class _LectorBase(threading.Thread):
         self.resumen = Resumen(spec.source, spec.ruta, spec.esperadas)
         self._parar = threading.Event()
         self._seq = 0
+        # Solo /stream y /video reconectan; en /capture cada muestra es su conexión.
+        self._rastrea_reconexiones = False
+        self._conexion_medida: int | None = None
 
     def detener(self) -> None:
         self._parar.set()
@@ -174,7 +181,21 @@ class _LectorBase(threading.Thread):
         if faltan:
             nombres = [NOMBRE_CABECERA[c] for c in faltan]
             fila["cabeceras_faltantes"] = ";".join(nombres)
-            self.resumen.registrar_faltantes(nombres)
+            # Valor crudo de las presentes pero inválidas, para diagnosticar.
+            crudos = {
+                NOMBRE_CABECERA[c]: f.cabeceras[c] for c in faltan if c in f.cabeceras
+            }
+            if crudos:
+                diag = "; ".join(
+                    f"cabecera {n} inválida: {v!r}" for n, v in crudos.items()
+                )
+                fila["error"] = "; ".join(filter(None, [fila["error"], diag]))
+            self.resumen.registrar_faltantes(nombres, crudos)
+        if self._rastrea_reconexiones and not fila["warmup"]:
+            if self._conexion_medida is None:
+                self._conexion_medida = conexion
+            elif conexion != self._conexion_medida:
+                self.resumen.con_reconexiones = True
         self.resumen.sumar(
             fotogramas=1, n_recv_1=int(f.n_recv == 1), errores=int(f.error is not None)
         )
@@ -194,6 +215,10 @@ class LectorStream(_LectorBase):
     la conexión). `conexion` incrementa en cada reconexión: los fotogramas a cada
     lado no son consecutivos.
     """
+
+    def __init__(self, *args, **kw) -> None:
+        super().__init__(*args, **kw)
+        self._rastrea_reconexiones = True
 
     def run(self) -> None:
         p = self.params

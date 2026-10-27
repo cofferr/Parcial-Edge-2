@@ -90,3 +90,33 @@ def test_resumir_frames_sintetico(tmp_path):
     assert r["n_recv_1"] == 2 and round(r["pct_n_recv_1"]) == 40
     assert round(r["ttx_ms_p50"]) == 5 and r["ttx_filas_validas"] == 3
     assert round(r["fps_medio"]) == 10 and r["huecos_mayores_1s"] == 0
+
+
+def _csv(tmp_path, filas):
+    from edge_parcial.acquisition.modelo import fila_vacia
+    from edge_parcial.acquisition.registro import RegistroCSV
+
+    with RegistroCSV(tmp_path) as reg:
+        for i, (endpoint, warmup, conexion) in enumerate(filas):
+            f = fila_vacia()
+            f.update(
+                run_id="r", source="s", endpoint=endpoint, seq=i, warmup=warmup,
+                conexion=conexion, t_first_ns=i, t_last_ns=i, n_recv=1, descartado=0,
+            )  # fmt: skip
+            reg.fila(f)
+    return tmp_path / "frames.csv"
+
+
+def test_resumen_csv_marca_reconexion_entre_medidas(tmp_path):
+    ruta = _csv(tmp_path, [("/stream", 1, 0), ("/stream", 0, 0), ("/stream", 0, 1)])
+    assert resumir_frames(ruta)["con_reconexiones"] is True
+
+
+def test_resumen_csv_reconexion_en_warmup_no_marca(tmp_path):
+    ruta = _csv(tmp_path, [("/stream", 1, 0), ("/stream", 0, 1), ("/stream", 0, 1)])
+    assert resumir_frames(ruta)["con_reconexiones"] is False
+
+
+def test_resumen_csv_capture_no_marca(tmp_path):
+    ruta = _csv(tmp_path, [("/capture", 0, 0), ("/capture", 0, 1), ("/capture", 0, 2)])
+    assert resumir_frames(ruta)["con_reconexiones"] is False

@@ -84,16 +84,28 @@ class Resumen:
     errores: int = 0  # muestras con error, JPEG inválido o protocolo
     n_recv_1: int = 0  # fotogramas con n_recv == 1 (ttx = 0 es solo resolución)
     abandonada: bool = False
+    # Hubo una reconexión entre fotogramas medidos (warmup=0): no se promedia en silencio.
+    con_reconexiones: bool = False
     cabeceras_faltantes: dict = field(default_factory=dict)  # nombre -> filas
     bytes_recv_por_conexion: list = field(default_factory=list)
     advertencias: list = field(default_factory=list)  # una vez por tipo
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
-    def registrar_faltantes(self, nombres: list[str]) -> None:
+    def registrar_faltantes(
+        self, nombres: list[str], crudos: dict | None = None
+    ) -> None:
+        """Cuenta cabeceras ausentes o inválidas; avisa una vez por tipo.
+
+        `crudos` trae el valor recibido de las cabeceras presentes pero inválidas.
+        """
+        crudos = crudos or {}
         with self._lock:
             for n in nombres:
                 if n not in self.cabeceras_faltantes:
-                    msg = f"[{self.source}{self.endpoint}] falta la cabecera {n}"
+                    if n in crudos:
+                        msg = f"[{self.source}{self.endpoint}] cabecera {n} inválida, valor crudo {crudos[n]!r}"
+                    else:
+                        msg = f"[{self.source}{self.endpoint}] falta la cabecera {n}"
                     self.advertencias.append(msg)
                     log.warning(msg)
                 self.cabeceras_faltantes[n] = self.cabeceras_faltantes.get(n, 0) + 1
@@ -127,6 +139,7 @@ class Resumen:
             "errores": self.errores,
             "n_recv_1": self.n_recv_1,
             "abandonada": self.abandonada,
+            "con_reconexiones": self.con_reconexiones,
             "cabeceras_faltantes": dict(self.cabeceras_faltantes),
             "bytes_recv_por_conexion": list(self.bytes_recv_por_conexion),
             "bytes_recv_total": self.bytes_recv_total,
