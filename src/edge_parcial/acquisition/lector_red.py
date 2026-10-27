@@ -310,6 +310,12 @@ class LectorCapture(_LectorBase):
     una fila con `error`. `conexion` = seq (cada muestra abre su conexión).
     """
 
+    # Variantes (LectorAperturaStream): tipo de parser, cabecera Connection y
+    # momento de t_request.
+    _TIPO_PARSER = "captura"
+    _CONNECTION = "close"
+    _T_REQ_ANTES_DE_CONECTAR = False
+
     def __init__(self, *args, pausa_s: float = 0.0, **kw) -> None:
         super().__init__(*args, **kw)
         self.pausa_s = pausa_s
@@ -327,13 +333,16 @@ class LectorCapture(_LectorBase):
         total = 0
         sock = None
         try:
+            if self._T_REQ_ANTES_DE_CONECTAR:
+                t_req = perf_counter_ns()
             sock = socket.create_connection(
                 (self.spec.host, self.spec.puerto), timeout=p.timeout_conexion_s
             )
             sock.settimeout(_TICK_S)
-            t_req = perf_counter_ns()
-            sock.sendall(self._peticion("close"))
-            parser = ParserMJPEG("captura")
+            if not self._T_REQ_ANTES_DE_CONECTAR:
+                t_req = perf_counter_ns()
+            sock.sendall(self._peticion(self._CONNECTION))
+            parser = ParserMJPEG(self._TIPO_PARSER)
             buf = bytearray(p.recv_bytes)
             mv = memoryview(buf)
             ultimo = time.monotonic()
@@ -371,3 +380,15 @@ class LectorCapture(_LectorBase):
             if sock is not None:
                 self.resumen.bytes_recv_por_conexion.append(total)
                 sock.close()
+
+
+class LectorAperturaStream(LectorCapture):
+    """e2e de DroidCam: por muestra, abre el stream y para en el primer fotograma.
+
+    t_request_ns = instante antes de abrir el socket; el e2e es t_ready (tras decodificar)
+    menos t_request. Cierra la conexión tras el primer fotograma.
+    """
+
+    _TIPO_PARSER = "stream"
+    _CONNECTION = "keep-alive"
+    _T_REQ_ANTES_DE_CONECTAR = True

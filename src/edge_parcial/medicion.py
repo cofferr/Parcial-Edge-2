@@ -13,14 +13,19 @@ import queue
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 from edge_parcial import metadata
 from edge_parcial.acquisition.codificador_jpeg import CodificadorJPEG
 from edge_parcial.acquisition.decodificador import Decodificador
 from edge_parcial.acquisition.lector_local import LectorLocal, crear_camara
 from edge_parcial.acquisition.lector_red import (
+    LectorAperturaStream,
+    LectorCapture,
     LectorStream,
+    SpecFuente,
     spec_droidcam,
+    spec_esp32_capture,
     spec_esp32_stream,
 )
 from edge_parcial.acquisition.registro import RegistroCSV
@@ -44,8 +49,14 @@ def ejecutar_unidad(
     efectos_confirmados: bool = False,
     timeout_s: float = 1800.0,
     cpu_s: float = 2.0,
+    e2e: bool = False,
 ) -> dict:
-    """Una unidad de medición (1 o 3 fuentes simultáneas). Devuelve la metadata."""
+    """Una unidad de medición (1 o 3 fuentes simultáneas). Devuelve la metadata.
+
+    Con `e2e=True` (Tarea 1.5) la ESP32 se mide por /capture con conexión nueva por
+    muestra y DroidCam abriendo el stream hasta el primer fotograma decodificado (o por
+    la URL de imagen fija de la config).
+    """
     params = cfg.lector
     n_total = params.warmup_fotogramas + n
     meta = metadata.recolectar_metadata(
@@ -87,12 +98,18 @@ def ejecutar_unidad(
                     )
                 )
             else:
-                spec = spec_esp32_stream(cfg) if f == "esp32" else spec_droidcam(cfg)
+                clase = LectorStream
+                if e2e:
+                    spec, clase = _spec_e2e(cfg, f)
+                else:
+                    spec = (
+                        spec_esp32_stream(cfg) if f == "esp32" else spec_droidcam(cfg)
+                    )
                 consumidores.append(
                     Decodificador(cola, registro.fila, f"decodificador-{f}")
                 )
                 lectores.append(
-                    LectorStream(
+                    clase(
                         spec,
                         params,
                         run_id,
@@ -133,6 +150,23 @@ def ejecutar_unidad(
     metadata.cerrar_metadata(meta, cfg)  # /status final con el stream cerrado
     metadata.escribir_metadata(meta, dir_raw)
     return meta
+
+
+def _spec_e2e(cfg: Config, fuente: str):
+    """(spec, clase de lector) del e2e de una fuente de red."""
+    if fuente == "esp32":
+        return spec_esp32_capture(cfg), LectorCapture
+    url = cfg.droidcam.url_imagen_fija
+    if url:  # imagen fija: petición -> JPEG
+        u = urlparse(url)
+        spec = SpecFuente(
+            "droidcam",
+            u.hostname or cfg.droidcam.ip,
+            u.port or cfg.droidcam.puerto,
+            u.path or "/",
+        )
+        return spec, LectorCapture
+    return spec_droidcam(cfg), LectorAperturaStream
 
 
 def ejecutar_medicion(
@@ -183,6 +217,58 @@ def ejecutar_medicion(
             if marca:
                 estado += f"; CON RECONEXIONES en {', '.join(marca)} (no se promedia)"
             log(f"    -> {estado}")
+            resultados.append(meta)
+            if pausa_s:
+                time.sleep(pausa_s)
+    return resultados
+
+
+METODO_E2E = {
+    "esp32": "/capture con conexión nueva por muestra (petición -> fotograma decodificado)",
+    "droidcam": "apertura del stream hasta el primer fotograma decodificado",
+    "droidcam_imagen_fija": "URL de imagen fija (petición -> fotograma decodificado)",
+    "local": "read() con la cámara abierta",
+}
+
+
+def ejecutar_e2e(
+    cfg: Config,
+    corridas: int,
+    n: int,
+    fuentes: tuple[str, ...],
+    dir_raw: Path,
+    *,
+    pausa_s: float = 2.0,
+    log=print,
+    **kw,
+) -> list[dict]:
+    """Tarea 1.5: latencia extremo a extremo medida, una fuente a la vez."""
+    ts = datetime.now()
+    resultados = []
+    for k in range(1, corridas + 1):
+        for f in fuentes:
+            run_id = f"{ts:%Y%m%d-%H%M%S}-e2e-c{k}-{f}"
+            metodo = METODO_E2E[
+                "droidcam_imagen_fija"
+                if f == "droidcam" and cfg.droidcam.url_imagen_fija
+                else f
+            ]
+            contexto = {
+                "tarea": "1.5", "modo": "aislada", "corrida": k, "fuente": f, "fuentes": [f],
+                "n_medidas": n, "warmup": cfg.lector.warmup_fotogramas, "metodo_e2e": metodo,
+            }  # fmt: skip
+            log(f"[e2e] corrida {k}/{corridas}: {f} ({metodo}) -> {run_id}")
+            meta = ejecutar_unidad(
+                cfg, run_id, (f,), "e2e", n, dir_raw, contexto=contexto, e2e=True, **kw
+            )
+            log(
+                "    -> "
+                + (
+                    "válida"
+                    if meta["valida"]
+                    else "INVÁLIDA: " + "; ".join(meta["motivos_invalida"])
+                )
+            )
             resultados.append(meta)
             if pausa_s:
                 time.sleep(pausa_s)
