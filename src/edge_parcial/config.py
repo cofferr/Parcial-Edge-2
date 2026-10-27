@@ -31,12 +31,25 @@ class FuenteLocal:
 
 
 @dataclass(frozen=True)
+class ParamsLector:
+    backoff_inicial_s: float
+    backoff_max_s: float
+    intentos_max: int
+    cola_max: int
+    recv_bytes: int
+    timeout_conexion_s: float
+    timeout_inactividad_s: float
+    warmup_fotogramas: int
+
+
+@dataclass(frozen=True)
 class Config:
     gateway_ip: str
     esp32: FuenteRed
     droidcam: FuenteRed
     local: FuenteLocal
     v_propagacion_m_s: float
+    lector: ParamsLector
 
 
 def _seccion(datos: dict, nombre: str) -> dict:
@@ -87,6 +100,17 @@ def cargar_config(ruta: Path | str | None = None) -> Config:
     droidcam = _fuente_red(datos, "droidcam", con_velocidad=False)
     local = _seccion(datos, "local")
     prop = _seccion(datos, "propagacion")
+    lec = _seccion(datos, "lector")
+    lector = ParamsLector(
+        backoff_inicial_s=float(_clave(lec, "lector", "backoff_inicial_s")),
+        backoff_max_s=float(_clave(lec, "lector", "backoff_max_s")),
+        intentos_max=int(_clave(lec, "lector", "intentos_max")),
+        cola_max=int(_clave(lec, "lector", "cola_max")),
+        recv_bytes=int(_clave(lec, "lector", "recv_bytes")),
+        timeout_conexion_s=float(_clave(lec, "lector", "timeout_conexion_s")),
+        timeout_inactividad_s=float(_clave(lec, "lector", "timeout_inactividad_s")),
+        warmup_fotogramas=int(_clave(lec, "lector", "warmup_fotogramas")),
+    )
     return Config(
         gateway_ip=gateway_ip,
         esp32=esp32,
@@ -96,4 +120,5 @@ def cargar_config(ruta: Path | str | None = None) -> Config:
             distancia_m=float(_clave(local, "local", "distancia_m")),
         ),
         v_propagacion_m_s=float(_clave(prop, "propagacion", "v_m_s")),
+        lector=lector,
     )

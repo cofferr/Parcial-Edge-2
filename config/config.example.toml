@@ -28,3 +28,14 @@ distancia_m = 0.0
 [propagacion]
 # Velocidad de propagación para d/v (aire: c; se usa c por ser enlace inalámbrico).
 v_m_s = 299_792_458
+
+[lector]
+# Parámetros del lector MJPEG de red (Paso 2).
+backoff_inicial_s = 0.25       # espera tras el primer corte; se duplica en cada intento
+backoff_max_s = 4.0
+intentos_max = 5               # fallos seguidos antes de abandonar la fuente
+cola_max = 8                   # cola lector -> decodificador (si se llena, se descarta)
+recv_bytes = 65536             # tamaño del búfer de recv_into (64 KiB)
+timeout_conexion_s = 3.0
+timeout_inactividad_s = 5.0    # sin datos durante este tiempo = corte (o timeout en /capture)
+warmup_fotogramas = 20

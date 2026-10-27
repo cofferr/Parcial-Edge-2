@@ -49,3 +49,18 @@ def test_esp32_velocidad_con_campo_fuente():
     cfg = cargar_config(RUTA_EJEMPLO)
     assert cfg.esp32.velocidad_nominal_bps == 72_200_000
     assert "MCS" in cfg.esp32.velocidad_nominal_fuente
+
+
+def test_parametros_del_lector():
+    lec = cargar_config(RUTA_EJEMPLO).lector
+    assert (lec.backoff_inicial_s, lec.backoff_max_s) == (0.25, 4.0)
+    assert (lec.intentos_max, lec.cola_max, lec.recv_bytes) == (5, 8, 65536)
+    assert lec.warmup_fotogramas == 20
+
+
+def test_falta_seccion_lector(tmp_path):
+    texto = RUTA_EJEMPLO.read_text().split("[lector]")[0]
+    ruta = tmp_path / "c.toml"
+    ruta.write_text(texto)
+    with pytest.raises(ErrorConfig, match=r"\[lector\]"):
+        cargar_config(ruta)
