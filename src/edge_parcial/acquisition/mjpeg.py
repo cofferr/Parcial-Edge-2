@@ -169,8 +169,15 @@ class ParserMJPEG:
         return []
 
     def bytes_pendientes(self) -> int:
-        """Bytes recibidos que no forman parte de un fotograma ya entregado."""
-        return len(self._buf)
+        """Bytes recibidos de un fotograma incompleto (incluye su cabecera ya leída)."""
+        if self._estado == "CUERPO":
+            return self._parte["header_bytes"] + len(self._buf)
+        if self._estado == "PARTE":
+            k = 0
+            while k < len(self._buf) and self._buf[k] in (13, 10):
+                k += 1
+            return len(self._buf) - k
+        return 0
 
     @property
     def delimitador(self) -> bytes | None:
