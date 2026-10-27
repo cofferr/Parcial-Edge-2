@@ -35,7 +35,7 @@ def test_config_ejemplo_carga():
         cfg = tomllib.load(f)
     for seccion in ["red", "esp32", "droidcam", "local", "propagacion"]:
         assert seccion in cfg
-    assert cfg["esp32"]["velocidad_nominal_cita"]
+    assert cfg["esp32"]["velocidad_nominal_fuente"]
 
 
 def test_documentos_existen():
@@ -46,5 +46,14 @@ def test_documentos_existen():
 
 def test_gitignore_cubre_archivos_sensibles():
     texto = (RAIZ / ".gitignore").read_text()
-    for patron in ["config/config.toml", "data/recordings", "secrets.h", ".venv"]:
+    for patron in [
+        "config/config.toml",
+        "data/recordings",
+        "secrets.h",
+        ".venv",
+        "/c.jpg",
+        "/s.bin",
+        "/*.jpg",
+        "/*.bin",
+    ]:
         assert patron in texto, patron

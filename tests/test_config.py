@@ -38,3 +38,14 @@ def test_toml_invalido(tmp_path):
     ruta.write_text("esto no es toml [")
     with pytest.raises(ErrorConfig, match="TOML inválido"):
         cargar_config(ruta)
+
+
+def test_droidcam_sin_velocidad_nominal_fija():
+    cfg = cargar_config(RUTA_EJEMPLO)
+    assert cfg.droidcam.velocidad_nominal_bps is None
+
+
+def test_esp32_velocidad_con_campo_fuente():
+    cfg = cargar_config(RUTA_EJEMPLO)
+    assert cfg.esp32.velocidad_nominal_bps == 72_200_000
+    assert "MCS" in cfg.esp32.velocidad_nominal_fuente

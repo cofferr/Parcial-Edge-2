@@ -25,3 +25,9 @@ data/recordings/*
 .pytest_cache/
 .ruff_cache/
 .DS_Store
+
+# Capturas sueltas de prueba en la raíz
+/*.jpg
+/*.bin
+/c.jpg
+/s.bin

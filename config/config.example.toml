@@ -6,17 +6,18 @@ gateway_ip = "192.168.43.1"   # puerta de enlace del hotspot
 [esp32]
 ip = "192.168.43.100"
 distancia_m = 1.0
-# Velocidad nominal del enlace (IEEE 802.11 b/g/n 2,4 GHz según hoja técnica del ESP32).
+# Velocidad nominal del enlace. 72,2 Mbps es la cifra de la tabla MCS de 802.11n
+# (HT20, MCS7, 1 flujo, guarda corta). La hoja técnica solo confirma "802.11n
+# MCS0-7 en 20 y 40 MHz" y "hasta 150 Mbps". Cita final: pendiente.
 velocidad_nominal_bps = 72_200_000
-velocidad_nominal_cita = "Espressif, ESP32 Series Datasheet: 802.11n HT20, MCS7, 72,2 Mbps"
+velocidad_nominal_fuente = "Tabla MCS IEEE 802.11n: HT20, MCS7, 1 flujo, guarda corta (cita pendiente)"
 
 [droidcam]
 ip = "192.168.43.1"
 puerto = 4747
 distancia_m = 1.0
-# Tasa de transmisión del Wi-Fi del Mac (system_profiler SPAirPortDataType); copiar el valor observado.
-velocidad_nominal_bps = 0
-velocidad_nominal_cita = "system_profiler SPAirPortDataType, Transmit Rate (Mac), fecha de la sesión"
+# Sin velocidad nominal fija: se toma de tasa_transmision_mbps de la metadata de
+# cada corrida (system_profiler, Mac), capturada al inicio y al cierre.
 # URL de imagen fija para el extremo a extremo; vacío = abrir stream hasta primer fotograma.
 url_imagen_fija = ""
 

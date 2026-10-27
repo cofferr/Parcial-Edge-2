@@ -17,8 +17,9 @@ class ErrorConfig(Exception):
 class FuenteRed:
     ip: str
     distancia_m: float
-    velocidad_nominal_bps: float
-    velocidad_nominal_cita: str
+    # None en DroidCam: se toma de tasa_transmision_mbps de la metadata en cada corrida.
+    velocidad_nominal_bps: float | None = None
+    velocidad_nominal_fuente: str = ""
     puerto: int = 80
     url_imagen_fija: str = ""
 
@@ -50,13 +51,18 @@ def _clave(seccion: dict, nombre: str, clave: str):
     return seccion[clave]
 
 
-def _fuente_red(datos: dict, nombre: str) -> FuenteRed:
+def _fuente_red(datos: dict, nombre: str, con_velocidad: bool) -> FuenteRed:
     s = _seccion(datos, nombre)
+    velocidad = None
+    fuente = ""
+    if con_velocidad:
+        velocidad = float(_clave(s, nombre, "velocidad_nominal_bps"))
+        fuente = str(_clave(s, nombre, "velocidad_nominal_fuente"))
     return FuenteRed(
         ip=str(_clave(s, nombre, "ip")),
         distancia_m=float(_clave(s, nombre, "distancia_m")),
-        velocidad_nominal_bps=float(_clave(s, nombre, "velocidad_nominal_bps")),
-        velocidad_nominal_cita=str(_clave(s, nombre, "velocidad_nominal_cita")),
+        velocidad_nominal_bps=velocidad,
+        velocidad_nominal_fuente=fuente,
         puerto=int(s.get("puerto", 80)),
         url_imagen_fija=str(s.get("url_imagen_fija", "")),
     )
@@ -77,8 +83,8 @@ def cargar_config(ruta: Path | str | None = None) -> Config:
         raise ErrorConfig(f"TOML inválido en {ruta}: {e}") from e
 
     gateway_ip = str(_clave(_seccion(datos, "red"), "red", "gateway_ip"))
-    esp32 = _fuente_red(datos, "esp32")
-    droidcam = _fuente_red(datos, "droidcam")
+    esp32 = _fuente_red(datos, "esp32", con_velocidad=True)
+    droidcam = _fuente_red(datos, "droidcam", con_velocidad=False)
     local = _seccion(datos, "local")
     prop = _seccion(datos, "propagacion")
     return Config(

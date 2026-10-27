@@ -26,8 +26,11 @@ PAQUETES = [
     "ruff",
 ]
 
-# Claves que puede usar /status para el RSSI (el firmware no fija el nombre aquí).
-_CLAVES_RSSI = ("rssi_dbm", "rssi", "x-rssi-dbm")
+# Clave del RSSI en el JSON de /status (X-Rssi-Dbm es solo la cabecera de stream/capture).
+CLAVE_RSSI = "rssi"
+FUENTES = ("local", "esp32", "droidcam")
+TIMEOUT_STATUS_S = 3.0
+REINTENTOS_STATUS = 1
 
 
 def crear_run_id(fuente: str, ahora: datetime | None = None) -> str:
@@ -68,12 +71,7 @@ def commit_actual(raiz: Path = RAIZ) -> dict:
     return {"hash": hash_, "sucio": None if estado is None else bool(estado)}
 
 
-def consultar_status_esp32(ip: str, puerto: int = 80, timeout: float = 3.0) -> dict:
-    """Consulta /status de la ESP32-CAM.
-
-    Debe llamarse con el stream cerrado: el servidor admite un solo cliente.
-    Devuelve {"fw", "rssi_dbm", "ok", "error"}; nunca lanza por fallos de red.
-    """
+def _consultar_status_una_vez(ip: str, puerto: int, timeout: float) -> dict:
     resultado = {"fw": None, "rssi_dbm": None, "ok": False, "error": None}
     conn = HTTPConnection(ip, puerto, timeout=timeout)
     try:
@@ -85,7 +83,7 @@ def consultar_status_esp32(ip: str, puerto: int = 80, timeout: float = 3.0) -> d
             return resultado
         datos = json.loads(cuerpo)
     except (OSError, ValueError) as e:
-        resultado["error"] = f"/status no disponible: {e}"
+        resultado["error"] = f"/status no disponible: {type(e).__name__}: {e}"
         return resultado
     finally:
         conn.close()
@@ -94,15 +92,36 @@ def consultar_status_esp32(ip: str, puerto: int = 80, timeout: float = 3.0) -> d
         resultado["error"] = "/status no devolvió un objeto JSON"
         return resultado
     resultado["fw"] = datos.get("fw")
-    minusculas = {str(k).lower(): v for k, v in datos.items()}
-    for clave in _CLAVES_RSSI:
-        if clave in minusculas:
-            resultado["rssi_dbm"] = minusculas[clave]
-            break
-    if resultado["fw"] is None:
-        resultado["error"] = "/status no trae 'fw'"
+    resultado["rssi_dbm"] = datos.get(CLAVE_RSSI)
+    faltan = [
+        n
+        for n, v in (("fw", resultado["fw"]), (CLAVE_RSSI, resultado["rssi_dbm"]))
+        if v is None
+    ]
+    if faltan:
+        resultado["error"] = f"/status no trae: {', '.join(faltan)}"
         return resultado
     resultado["ok"] = True
+    return resultado
+
+
+def consultar_status_esp32(
+    ip: str,
+    puerto: int = 80,
+    timeout: float = TIMEOUT_STATUS_S,
+    reintentos: int = REINTENTOS_STATUS,
+) -> dict:
+    """Consulta /status de la ESP32-CAM (timeout corto y como máximo un reintento).
+
+    Debe llamarse con el stream cerrado: el servidor admite un solo cliente.
+    Devuelve {"fw", "rssi_dbm", "ok", "error", "intentos"}; el error es el literal
+    del último intento. Nunca lanza por fallos de red.
+    """
+    for intento in range(1, reintentos + 2):
+        resultado = _consultar_status_una_vez(ip, puerto, timeout)
+        resultado["intentos"] = intento
+        if resultado["ok"]:
+            break
     return resultado
 
 
@@ -165,20 +184,42 @@ def muestrear_cpu(duracion_s: float = 2.0, intervalo_s: float = 0.5) -> dict:
     }
 
 
+def _validar(meta: dict) -> None:
+    """valida = todas las fuentes usadas en la corrida son válidas."""
+    meta["valida"] = all(v["valida"] for v in meta["validez_por_fuente"].values())
+    meta["motivos_invalida"] = [
+        f"{fuente}: {m}"
+        for fuente, v in meta["validez_por_fuente"].items()
+        for m in v["motivos"]
+    ]
+
+
 def recolectar_metadata(
     cfg: Config,
     run_id: str,
+    fuentes: tuple[str, ...] = FUENTES,
     resoluciones: dict | None = None,
     cpu_duracion_s: float = 2.0,
 ) -> dict:
-    """Metadatos al inicio de la corrida. Consulta /status: stream cerrado."""
-    status = consultar_status_esp32(cfg.esp32.ip, cfg.esp32.puerto)
-    motivos = []
-    if not status["ok"]:
-        motivos.append(status["error"])
-    return {
+    """Metadatos al inicio de la corrida.
+
+    Solo las fuentes usadas cuentan para la validez. /status de la ESP32-CAM se
+    consulta únicamente si "esp32" está en `fuentes` (stream cerrado).
+    """
+    desconocidas = set(fuentes) - set(FUENTES)
+    if desconocidas:
+        raise ValueError(f"Fuentes desconocidas: {sorted(desconocidas)}")
+    validez = {f: {"valida": True, "motivos": []} for f in fuentes}
+    status_inicio = None
+    if "esp32" in fuentes:
+        status = consultar_status_esp32(cfg.esp32.ip, cfg.esp32.puerto)
+        status_inicio = status
+        if not status["ok"]:
+            validez["esp32"] = {"valida": False, "motivos": [status["error"]]}
+    meta = {
         "run_id": run_id,
         "fecha": datetime.now().astimezone().isoformat(),
+        "fuentes_usadas": list(fuentes),
         "ips": {
             "esp32": cfg.esp32.ip,
             "droidcam": cfg.droidcam.ip,
@@ -190,27 +231,37 @@ def recolectar_metadata(
             "paquetes": versiones_paquetes(),
         },
         "commit": commit_actual(),
-        "esp32_status_inicio": {"fw": status["fw"], "rssi_dbm": status["rssi_dbm"]},
-        "wifi_mac": leer_wifi_mac(),
+        "esp32_status_inicio": status_inicio,
+        "wifi_mac_inicio": leer_wifi_mac(),
         "resoluciones": resoluciones or {},
         "cpu": muestrear_cpu(cpu_duracion_s),
-        "valida": not motivos,
-        "motivos_invalida": motivos,
+        "validez_por_fuente": validez,
     }
+    _validar(meta)
+    return meta
 
 
 def cerrar_metadata(meta: dict, cfg: Config) -> dict:
-    """Consulta /status al final (stream cerrado) y valida que `fw` no cambió."""
-    status = consultar_status_esp32(cfg.esp32.ip, cfg.esp32.puerto)
-    meta["esp32_status_fin"] = {"fw": status["fw"], "rssi_dbm": status["rssi_dbm"]}
-    if not status["ok"]:
-        meta["motivos_invalida"].append(status["error"])
-    elif meta["esp32_status_inicio"]["fw"] != status["fw"]:
-        meta["motivos_invalida"].append(
-            f"fw cambió durante la serie: {meta['esp32_status_inicio']['fw']!r} "
-            f"-> {status['fw']!r}"
-        )
-    meta["valida"] = not meta["motivos_invalida"]
+    """Cierre de la corrida: Wi-Fi del Mac y, si se usó la ESP32, /status final.
+
+    La tasa Wi-Fi se guarda al inicio y al cierre (es una instantánea que varía).
+    Valida que `fw` no cambió dentro de la serie.
+    """
+    meta["wifi_mac_fin"] = leer_wifi_mac()
+    if "esp32" in meta["fuentes_usadas"]:
+        status = consultar_status_esp32(cfg.esp32.ip, cfg.esp32.puerto)
+        meta["esp32_status_fin"] = status
+        motivos = meta["validez_por_fuente"]["esp32"]["motivos"]
+        if not status["ok"]:
+            motivos.append(status["error"])
+        else:
+            inicio = (meta["esp32_status_inicio"] or {}).get("fw")
+            if inicio != status["fw"]:
+                motivos.append(
+                    f"fw cambió durante la serie: {inicio!r} -> {status['fw']!r}"
+                )
+        meta["validez_por_fuente"]["esp32"]["valida"] = not motivos
+    _validar(meta)
     return meta
 
 
