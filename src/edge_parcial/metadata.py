@@ -205,6 +205,7 @@ def recolectar_metadata(
     resoluciones: dict | None = None,
     cpu_duracion_s: float = 2.0,
     efectos_confirmados: bool = False,
+    contexto: dict | None = None,
 ) -> dict:
     """Metadatos al inicio de la corrida.
 
@@ -247,9 +248,29 @@ def recolectar_metadata(
         "wifi_mac_inicio": leer_wifi_mac(),
         "resoluciones": resoluciones or {},
         "camara_local": camara_local,
+        # tarea, modo, corrida, fuente...: el análisis descubre las corridas con esto.
+        "contexto": contexto or {},
         "cpu": muestrear_cpu(cpu_duracion_s),
         "validez_por_fuente": validez,
     }
+    _validar(meta)
+    return meta
+
+
+def registrar_resumen_fuente(meta: dict, fuente: str, resumen: dict) -> dict:
+    """Guarda el resumen del lector y traslada sus motivos de invalidez a la fuente.
+
+    `con_reconexiones` NO invalida por sí sola la fuente, pero queda registrada para que
+    el análisis excluya o repita la corrida (nunca se promedia en silencio).
+    """
+    meta.setdefault("lectores", {})[fuente] = resumen
+    validez = meta["validez_por_fuente"].setdefault(
+        fuente, {"valida": True, "motivos": []}
+    )
+    for motivo in resumen.get("motivos_invalida", []):
+        if motivo not in validez["motivos"]:
+            validez["motivos"].append(motivo)
+    validez["valida"] = not validez["motivos"]
     _validar(meta)
     return meta
 

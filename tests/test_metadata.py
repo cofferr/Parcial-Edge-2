@@ -339,3 +339,28 @@ def test_resolucion_real_distinta_invalida_la_fuente_local(monkeypatch):
     assert not meta["valida"]
     assert meta["validez_por_fuente"]["local"]["motivos"] == [motivo]
     assert meta["validez_por_fuente"]["droidcam"]["valida"]  # solo afecta a la local
+
+
+def test_contexto_y_resumen_de_fuente(monkeypatch):
+    monkeypatch.setattr(metadata, "leer_wifi_mac", dict)
+    cfg = cargar_config(RUTA_EJEMPLO)
+    meta = metadata.recolectar_metadata(
+        cfg,
+        "r1",
+        fuentes=("droidcam",),
+        cpu_duracion_s=0.1,
+        contexto={"tarea": "1.2_1.3", "modo": "aislada", "corrida": 1},
+    )
+    assert meta["contexto"]["corrida"] == 1
+    metadata.registrar_resumen_fuente(
+        meta,
+        "droidcam",
+        {
+            "con_reconexiones": True,
+            "motivos_invalida": ["fuente abandonada tras agotar los reintentos"],
+        },
+    )
+    assert not meta["valida"] and meta["lectores"]["droidcam"]["con_reconexiones"]
+    assert meta["motivos_invalida"] == [
+        "droidcam: fuente abandonada tras agotar los reintentos"
+    ]
