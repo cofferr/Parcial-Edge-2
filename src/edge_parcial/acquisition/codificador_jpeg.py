@@ -22,10 +22,12 @@ class CodificadorJPEG(threading.Thread):
         sink_fila,
         calidad: int = 50,
         nombre: str = "codificador-local",
+        sink_jpeg=None,
     ) -> None:
         super().__init__(name=nombre, daemon=True)
         self.cola = cola
         self.sink_fila = sink_fila
+        self.sink_jpeg = sink_jpeg  # opcional: (fila, bytes) para guardar el JPEG
         self.calidad = calidad
         self.codificados = 0
         self.fallidos = 0
@@ -57,4 +59,6 @@ class CodificadorJPEG(threading.Thread):
                 buf.size >= 4 and buf[:2].tobytes() == SOI and buf[-2:].tobytes() == EOI
             )
             self.codificados += 1
+            if self.sink_jpeg is not None and fila["jpeg_valid"]:
+                self.sink_jpeg(fila, buf.tobytes())
         self.sink_fila(fila)
