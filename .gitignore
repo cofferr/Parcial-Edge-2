@@ -36,3 +36,10 @@ rostros_conocidos/
 /*.bin
 /c.jpg
 /s.bin
+
+# Informe: salidas de compilación
+informe/*.pdf
+informe/*.aux
+informe/*.log
+informe/*.toc
+informe/*.out
