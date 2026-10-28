@@ -1,0 +1,139 @@
+"""Consultas de solo lectura que alimentan el panel (sin Streamlit, fáciles de probar)."""
+
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
+
+from edge_parcial.panel.datos import FUENTES, Rutas, leer_csv
+from edge_parcial.panel.estado import COMPONENTES, leer_estado
+
+ESTADO_OBSOLETO_S = 5.0  # sin latido en este tiempo = sin señal
+
+
+@dataclass(frozen=True)
+class ComponenteVista:
+    nombre: str
+    estado: str  # "vivo", "sin señal" o "sin datos"
+    fps: float | None
+    ultima_marca: str
+    errores: list[str]
+
+
+def _edad_s(marca: str | None, ahora: datetime) -> float | None:
+    if not marca:
+        return None
+    try:
+        return (ahora - datetime.fromisoformat(marca)).total_seconds()
+    except ValueError:
+        return None
+
+
+def estado_componentes(
+    ruta: Path, ahora: datetime | None = None
+) -> list[ComponenteVista]:
+    ahora = ahora or datetime.now().astimezone()
+    datos = leer_estado(ruta)
+    vistas = []
+    for nombre in COMPONENTES:
+        e = datos.get(nombre)
+        if not isinstance(e, dict):
+            vistas.append(ComponenteVista(nombre, "sin datos", None, "—", []))
+            continue
+        edad = _edad_s(e.get("ultima_marca"), ahora)
+        # El latido por sí solo no basta: una marca vieja con vivo=true es un componente caído.
+        vivo = bool(e.get("vivo")) and (edad is None or edad <= ESTADO_OBSOLETO_S)
+        vistas.append(
+            ComponenteVista(
+                nombre,
+                "vivo" if vivo else "sin señal",
+                e.get("fps"),
+                e.get("ultima_marca") or "—",
+                list(e.get("errores_recientes") or []),
+            )
+        )
+    return vistas
+
+
+def telemetria_reciente(rutas: Rutas, n: int = 120) -> pd.DataFrame:
+    """Últimas n lecturas con tipos numéricos y `timestamp` como índice."""
+    df = leer_csv(rutas.telemetria, ultimas=n)
+    if df.empty:
+        return df
+    for c in ("temperatura_c", "humedad_pct", "movimiento"):
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
+    return df.dropna(subset=["timestamp"]).set_index("timestamp")
+
+
+def ventanas_recientes(rutas: Rutas, n: int = 20) -> pd.DataFrame:
+    """Filas = esp32, droidcam, local, alerta; columnas = número de ventana (0/1)."""
+    df = leer_csv(rutas.eventos, ultimas=n)
+    if df.empty:
+        return df
+    columnas = {f"voto_{f}": f for f in FUENTES} | {"alerta": "alerta"}
+    faltan = [c for c in columnas if c not in df.columns]
+    if faltan:
+        return pd.DataFrame()
+    tabla = (
+        df[list(columnas)].apply(pd.to_numeric, errors="coerce").fillna(0).astype(int)
+    )
+    tabla.index = df["ventana"].values
+    return tabla.rename(columns=columnas).T
+
+
+@dataclass(frozen=True)
+class Evidencia:
+    ruta: Path
+    identidad: str
+    fuente: str
+    ts_wall: str
+    distancia: str
+
+
+def evidencias(rutas: Rutas, n: int = 12) -> list[Evidencia]:
+    """Últimos reconocimientos cuyo JPEG existe en snapshots (más reciente primero)."""
+    df = leer_csv(rutas.reconocimientos, ultimas=n * 3)
+    if df.empty or "snapshot" not in df.columns:
+        return []
+    salida = []
+    for fila in df.iloc[::-1].itertuples():
+        ruta = (
+            rutas.snapshots / Path(fila.snapshot).name
+        )  # solo el nombre: sin rutas relativas
+        if ruta.is_file():
+            salida.append(
+                Evidencia(
+                    ruta, fila.identidad, fila.fuente, fila.ts_wall, fila.distancia
+                )
+            )
+        if len(salida) == n:
+            break
+    return salida
+
+
+def parte_de(nombre: str) -> str:
+    """Parte del parcial según el prefijo del archivo (t1_, reto1_ → 1; t2_ → 2; ...)."""
+    n = nombre.lower()
+    for numero in ("1", "2", "3"):
+        if n.startswith((f"t{numero}_", f"reto{numero}")):
+            return f"Parte {numero}"
+    return "Otras"
+
+
+def tablas_disponibles(rutas: Rutas) -> dict[str, list[Path]]:
+    """CSV de data/processed/tablas agrupados por parte."""
+    grupos: dict[str, list[Path]] = {}
+    for p in sorted(rutas.tablas.glob("*.csv")):
+        grupos.setdefault(parte_de(p.name), []).append(p)
+    return dict(sorted(grupos.items()))
+
+
+def figuras_disponibles(rutas: Rutas) -> dict[str, list[Path]]:
+    """PNG de data/processed (y de tablas/) agrupados por parte."""
+    grupos: dict[str, list[Path]] = {}
+    pngs = sorted({*rutas.figuras.glob("*.png"), *rutas.tablas.glob("*.png")})
+    for p in pngs:
+        grupos.setdefault(parte_de(p.name), []).append(p)
+    return dict(sorted(grupos.items()))
