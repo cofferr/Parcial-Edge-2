@@ -190,3 +190,38 @@ def test_script_analisis(tmp_path, capsys):
     assert mod.main(args) == 0 and "t1_5_latencia" in capsys.readouterr().out
     vacio = ["--raw", str(tmp_path / "nada"), "--salida", str(tmp_path / "s2"), "--config", str(RUTA_EJEMPLO)]  # fmt: skip
     assert mod.main(vacio) == 1
+
+
+def test_desglose_esp32_y_reto1(tmp_path, cfg):
+    from edge_parcial.analysis import desglose_e2e as d
+
+    montar(tmp_path)
+    corridas = cargar_corridas(tmp_path)
+    tp, _ = elegir_tprop(tmp_path, cfg)
+    with pytest.raises(ValueError, match="RTT por connect TCP"):
+        d.desglose_esp32(d.ultima_utilizable(corridas, "1.5", "esp32"), cfg, tp)
+    tp.loc[tp["fuente"] == "esp32", ["rtt_tcp_ms_media", "rtt_tcp_ms_p95", "rtt_tcp_ms_n"]] = [8.0, 12.0, 100]  # fmt: skip
+    c = d.ultima_utilizable(corridas, "1.5", "esp32")
+    t = d.desglose_esp32(c, cfg, tp).set_index(["tramo", "componente"])
+    # El tramo de decodificación cierra exacto: cola + decodificación = total, residuo 0.
+    tr = t.loc["t_last→t_ready"]
+    assert tr.loc["residuo", "media_ms"] == 0
+    assert tr.loc["espera en cola", "media_ms"] + tr.loc["decodificación", "media_ms"] == pytest.approx(tr.loc["total medido", "media_ms"])  # fmt: skip
+    # Residuo de arranque = total − RTT TCP medio − tproc_dispositivo (medias).
+    a = t.loc["t_request→t_first"]
+    assert a.loc["residuo", "media_ms"] == pytest.approx(
+        a.loc["total medido", "media_ms"]
+        - a.loc["red (1 RTT TCP: 0,5 ida + 0,5 vuelta)", "media_ms"]
+        - a.loc["tproc_dispositivo (flush+capture+jpeg)", "media_ms"]
+    )
+
+    ve = d.velocidad_efectiva_esp32(c, cfg).set_index("cobertura")
+    assert ve.loc["todas", "n"] == 40 >= ve.loc["solo n_recv>1", "n"]
+    assert ve.loc["todas", "velocidad_efectiva_mbps"] >= ve.loc["solo n_recv>1", "velocidad_efectiva_mbps"]  # fmt: skip
+
+    reto = d.tabla_reto1(corridas, lmax_ms=1e9)
+    assert reto[reto["definicion_L"] == "e2e: t_ready − t_request"]["cumple"].all()
+    reto0 = d.tabla_reto1(corridas, lmax_ms=0.0)
+    ok = reto0.dropna(subset=["p95_ms"])
+    assert not ok["cumple"].any()
+    assert (ok["brecha_p95_media_ms"] == ok["p95_ms"] - ok["media_ms"]).all()

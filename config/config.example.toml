@@ -10,7 +10,7 @@ distancia_m = 1.0
 # (HT20, MCS7, 1 flujo, guarda corta). La hoja técnica solo confirma "802.11n
 # MCS0-7 en 20 y 40 MHz" y "hasta 150 Mbps". Cita final: pendiente.
 velocidad_nominal_bps = 72_200_000
-velocidad_nominal_fuente = "Tabla MCS IEEE 802.11n: HT20, MCS7, 1 flujo, guarda corta (cita pendiente)"
+velocidad_nominal_fuente = "IEEE 802.11n, HT20, MCS7, 1 flujo, guarda corta (72,2 Mbps; 65 con guarda larga). La hoja de datos del ESP32 solo confirma MCS0-7 en 20/40 MHz y hasta 150 Mbps."
 
 [droidcam]
 ip = "192.168.43.1"
