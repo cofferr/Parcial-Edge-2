@@ -15,8 +15,20 @@ import pandas as pd
 LOOPBACK = ("127.0.0.1", "[::1]", "::1", "localhost")
 COLUMNAS_INTERFACES = [
     "dispositivo", "puerto", "protocolo", "servicio", "version", "estado",
-    "cuenta_en_I", "observaciones",
+    "cuenta_en_I", "propietario", "cuenta_app", "observaciones",
 ]  # fmt: skip
+PROP_APLICACION = "aplicación del dispositivo"
+PROP_CELULAR = "AP / sistema del celular"
+PROP_HOST = "sistema o usuario del host"
+PROP_SIN_IDENTIFICAR = "sin identificar"
+# Aplicación propia de cada fuente (lo que el dispositivo hace en el montaje).
+PUERTOS_APLICACION = {("esp32", 80, "tcp"), ("droidcam", 4747, "tcp")}
+# El celular es a la vez AP y fuente: DNS (dnsmasq del hotspot) y mDNS son del sistema.
+PUERTOS_CELULAR = {
+    ("droidcam", 53, "tcp"),
+    ("droidcam", 53, "udp"),
+    ("droidcam", 5353, "udp"),
+}
 SERVICIOS_HTTP = ("http", "http-alt", "http-proxy", "https")
 PUERTOS_HTTP = (80, 81, 8080, 4747)
 
@@ -156,11 +168,22 @@ def es_candidato_http(fila: dict) -> bool:
     )
 
 
+def propietario(dispositivo: str, puerto: int, protocolo: str) -> str:
+    """Quién es dueño de la interfaz: aplicación del dispositivo, AP/sistema del celular..."""
+    clave = (dispositivo, puerto, protocolo)
+    if clave in PUERTOS_APLICACION:
+        return PROP_APLICACION
+    if clave in PUERTOS_CELULAR:
+        return PROP_CELULAR
+    return PROP_HOST if dispositivo == "host" else PROP_SIN_IDENTIFICAR
+
+
 def tabla_interfaces(por_dispositivo: dict[str, list[dict]]) -> pd.DataFrame:
     """Tabla I: una fila por interfaz; `cuenta_en_I` = puerto abierto (no `open|filtered`)."""
     filas = []
     for dispositivo, interfaces in por_dispositivo.items():
         for f in interfaces:
+            dueno = propietario(dispositivo, f["puerto"], f["protocolo"])
             filas.append(
                 {
                     "dispositivo": dispositivo,
@@ -170,6 +193,8 @@ def tabla_interfaces(por_dispositivo: dict[str, list[dict]]) -> pd.DataFrame:
                     "version": f.get("version", ""),
                     "estado": f["estado"],
                     "cuenta_en_I": f["estado"] == "open",
+                    "propietario": dueno,
+                    "cuenta_app": f["estado"] == "open" and dueno == PROP_APLICACION,
                     "observaciones": f.get("observaciones", ""),
                 }
             )
@@ -179,14 +204,26 @@ def tabla_interfaces(por_dispositivo: dict[str, list[dict]]) -> pd.DataFrame:
 def calcular_as(
     tabla: pd.DataFrame, dispositivos: list[str], etiqueta: str
 ) -> pd.DataFrame:
-    """AS ≈ N × I sin redondear: por dispositivo (N = 1) y total (N = #, I = promedio)."""
+    """AS ≈ N × I sin redondear, por dispositivo (N = 1) y total (N = #, I = promedio).
+
+    AS principal: todas las interfaces expuestas. AS_app (secundario): solo las de aplicación
+    del dispositivo; no sustituye al principal.
+    """
     filas = []
     for d in dispositivos:
-        i = float(((tabla["dispositivo"] == d) & tabla["cuenta_en_I"]).sum())
-        filas.append({"conjunto": etiqueta, "fila": d, "N": 1, "I": i, "AS": 1 * i})
+        de = tabla["dispositivo"] == d
+        i = float((de & tabla["cuenta_en_I"]).sum())
+        i_app = float((de & tabla["cuenta_app"]).sum())
+        filas.append(
+            {"conjunto": etiqueta, "fila": d, "N": 1, "I": i, "AS": i, "I_app": i_app, "AS_app": i_app}
+        )  # fmt: skip
     n = len(dispositivos)
     i_medio = sum(f["I"] for f in filas) / n
+    i_app_medio = sum(f["I_app"] for f in filas) / n
     filas.append(
-        {"conjunto": etiqueta, "fila": "total", "N": n, "I": i_medio, "AS": n * i_medio}
-    )
+        {
+            "conjunto": etiqueta, "fila": "total", "N": n, "I": i_medio, "AS": n * i_medio,
+            "I_app": i_app_medio, "AS_app": n * i_app_medio,
+        }
+    )  # fmt: skip
     return pd.DataFrame(filas)

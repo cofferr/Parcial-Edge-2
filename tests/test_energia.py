@@ -90,8 +90,17 @@ def test_tarea_3_3_razon_y_diferencia(tmp_path):
     assert len(t) == 6  # 2 casos x (media, p50, p95); el modo concurrente no entra
 
 
+def _ejemplo_sin_distancia() -> str:
+    """config.example.toml sin la clave obligatoria (el ejemplo ya trae un valor)."""
+    lineas = RUTA_EJEMPLO.read_text(encoding="utf-8").splitlines()
+    return (
+        "\n".join(ln for ln in lineas if not ln.startswith("distancia_esp32_ap_m"))
+        + "\n"
+    )
+
+
 def test_cargar_params_exige_distancia_y_la_cita(tmp_path):
-    base = RUTA_EJEMPLO.read_text(encoding="utf-8")
+    base = _ejemplo_sin_distancia()
     cfg = tmp_path / "c.toml"
     cfg.write_text(base, encoding="utf-8")
     with pytest.raises(en.ErrorEnergia, match="distancia_esp32_ap_m"):
@@ -99,13 +108,13 @@ def test_cargar_params_exige_distancia_y_la_cita(tmp_path):
     cfg.write_text(
         base + "\n[energia.x]\n", encoding="utf-8"
     )  # sección distinta: no engaña
-    cfg.write_text(base.replace("# distancia_esp32_ap_m = 0.0", "distancia_esp32_ap_m = 12.5"), encoding="utf-8")  # fmt: skip
+    cfg.write_text(base.replace("[energia]\n", "[energia]\ndistancia_esp32_ap_m = 12.5\n"), encoding="utf-8")  # fmt: skip
     p = en.cargar_params(cfg)
     assert (
         p.distancia_m == 12.5 and p.e_elec == 50e-9 and p.e_mp == pytest.approx(1.3e-15)
     )
     assert "Heinzelman" in p.cita
-    sin_cita = base.replace("# distancia_esp32_ap_m = 0.0", "distancia_esp32_ap_m = 1").replace('cita = "', 'cita_x = "')  # fmt: skip
+    sin_cita = base.replace("[energia]\n", "[energia]\ndistancia_esp32_ap_m = 1\n").replace('cita = "', 'cita_x = "')  # fmt: skip
     cfg.write_text(sin_cita, encoding="utf-8")
     with pytest.raises(en.ErrorEnergia, match="cita"):
         en.cargar_params(cfg)
@@ -142,12 +151,12 @@ def test_script_se_niega_sin_distancia_y_corre_con_ella(tmp_path, capsys):
     mod = cargar_script()
     t, ahorro = tablas_sinteticas(tmp_path)
     cfg = tmp_path / "c.toml"
-    cfg.write_text(RUTA_EJEMPLO.read_text(encoding="utf-8"), encoding="utf-8")
+    cfg.write_text(_ejemplo_sin_distancia(), encoding="utf-8")
     args = ["--config", str(cfg), "--tablas", str(t), "--ahorro", str(ahorro), "--salida", str(tmp_path / "out")]  # fmt: skip
     assert mod.main(args) == 2
     assert "distancia_esp32_ap_m" in capsys.readouterr().err
     assert not (tmp_path / "out").exists()  # no escribe nada
-    cfg.write_text(cfg.read_text().replace("# distancia_esp32_ap_m = 0.0", "distancia_esp32_ap_m = 5.0"), encoding="utf-8")  # fmt: skip
+    cfg.write_text(cfg.read_text().replace("[energia]\n", "[energia]\ndistancia_esp32_ap_m = 5.0\n"), encoding="utf-8")  # fmt: skip
     assert mod.main(args) == 0
     for n in ("t3_1_energia_fotograma", "t3_2_ahorro_8h", "t3_3_latencia_vs_1ms"):
         assert (tmp_path / "out" / f"{n}.csv").is_file() and (tmp_path / "out" / f"{n}.tex").is_file()  # fmt: skip

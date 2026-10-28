@@ -38,7 +38,7 @@ Código y pruebas: todo commiteado por módulo (sin push). Decisiones menores: `
 
 4. **Prueba de quórum** (`scripts/t2_3_prueba_quorum.py --ventanas`): no la lancé. Requiere que tapes cámaras y te muevas.
 5. **Corrida de capas de 5 min** (`scripts/t2_4_capas.py`): no la lancé.
-6. **nmap UDP** (`--fase udp`): necesita `sudo`; no lo ejecuto yo.
+6. ~~nmap UDP~~: hecho por el autor; resultados definitivos (AS principal 6,0 y 11,0; secundario de aplicación 2,0). Ver DISENO §26.
 
 ## A copiar a mano o revisar
 

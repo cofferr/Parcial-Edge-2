@@ -231,3 +231,80 @@ def test_alcance_acotado_de_la_esp32_y_host_timeout():
     assert set(range(1, 1025)) <= cubiertos
     assert {81, 554, 8000, 8080, 8443, 8554, 4747, 5353, 7001, 1935} <= cubiertos
     assert 1025 < len(cubiertos) < 3000  # 1-1024 + top 1000 + extras
+
+
+def test_udp_top_ports_configurable_y_solo_un_objetivo(tmp_path, monkeypatch):
+    mod = _cargar_script()
+    monkeypatch.setattr(
+        mod.metadata,
+        "consultar_status_esp32",
+        lambda ip, puerto: {
+            "ok": True,
+            "fw": "fw-test",
+            "error": None,
+            "rssi_dbm": -40,
+            "intentos": 1,
+        },
+    )
+    llamadas = []
+
+    def ejecutar(cmd, **kw):
+        llamadas.append(cmd)
+        from pathlib import Path
+
+        base = cmd[cmd.index("-oX") + 1]
+        Path(base).write_text(XML)
+        Path(base.replace(".xml", ".txt")).write_text("normal")
+        return SimpleNamespace(returncode=0)
+
+    rc = mod.main(
+        [
+            "--fase",
+            "udp",
+            "--solo",
+            "esp32",
+            "--udp-top-ports",
+            "20",
+            "--run-id",
+            "r",
+            "--config",
+            str(_config_con_ips(tmp_path)),
+            "--raw",
+            str(tmp_path / "raw"),
+            "--salida",
+            str(tmp_path / "out"),
+        ],
+        ejecutar=ejecutar,
+        sondear=lambda ip, p: [],
+        ips={"esp32": "1.1.1.1", "droidcam": "2.2.2.2", "host": "3.3.3.3"},
+    )
+    assert rc == 0
+    nmaps = [c for c in llamadas if "nmap" in c]
+    assert len(nmaps) == 1 and nmaps[0][-1] == "1.1.1.1"
+    assert "-sU" in nmaps[0] and nmaps[0][nmaps[0].index("--top-ports") + 1] == "20"
+
+
+def test_propietario_y_as_secundario_de_aplicacion():
+    def abierto(p, proto="tcp"):
+        return {"puerto": p, "protocolo": proto, "estado": "open"}
+
+    tabla = aud.tabla_interfaces(
+        {
+            "esp32": [abierto(80)],
+            "droidcam": [
+                abierto(53),
+                abierto(4747),
+                abierto(7800),
+                abierto(5353, "udp"),
+            ],
+            "host": [abierto(3306)],
+        }
+    )
+    dueno = dict(zip(zip(tabla["dispositivo"], tabla["puerto"]), tabla["propietario"], strict=True))  # fmt: skip
+    assert dueno[("esp32", 80)] == aud.PROP_APLICACION
+    assert dueno[("droidcam", 4747)] == aud.PROP_APLICACION
+    assert dueno[("droidcam", 53)] == dueno[("droidcam", 5353)] == aud.PROP_CELULAR
+    assert dueno[("droidcam", 7800)] == aud.PROP_SIN_IDENTIFICAR
+    a = aud.calcular_as(tabla, ["esp32", "droidcam", "local"], "a")
+    assert a["AS"].tolist() == [1.0, 4.0, 0.0, 5.0]  # principal: todas las expuestas
+    assert a["AS_app"].tolist() == [1.0, 1.0, 0.0, 2.0]  # secundario: solo aplicación

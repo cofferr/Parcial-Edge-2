@@ -74,5 +74,5 @@ e_elec_j_bit = 50e-9           # 50 nJ/bit
 e_fs_j_bit_m2 = 10e-12         # 10 pJ/bit/m^2
 e_mp_j_bit_m4 = 0.0013e-12     # 0,0013 pJ/bit/m^4
 cita = "Heinzelman, Chandrakasan y Balakrishnan, IEEE Trans. Wireless Commun., 2002 (referencia por verificar)"
-# OBLIGATORIA, la da el autor (m, ESP32-CAM -> punto de acceso); sin ella t3_energia.py no corre:
-# distancia_esp32_ap_m = 0.0
+# OBLIGATORIA, la da el autor; sin ella t3_energia.py no corre.
+distancia_esp32_ap_m = 1.0   # estimación, cota superior del montaje, en metros (ESP32-CAM -> punto de acceso)
