@@ -22,7 +22,7 @@ LSOF = """COMMAND   PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
 ControlCe 512 yo   10u  IPv4 0x1      0t0  TCP *:7000 (LISTEN)
 ControlCe 512 yo   11u  IPv6 0x2      0t0  TCP [::1]:7000 (LISTEN)
 python    900 yo    5u  IPv4 0x3      0t0  TCP 127.0.0.1:8000 (LISTEN)
-rapportd  610 yo    8u  IPv4 0x4      0t0  TCP 172.19.160.104:49152 (LISTEN)
+rapportd  610 yo    8u  IPv4 0x4      0t0  TCP 10.0.0.5:49152 (LISTEN)
 """
 
 
@@ -45,7 +45,7 @@ def test_parsear_lsof_y_loopback():
         ("0.0.0.0", 7000, False),
         ("[::1]", 7000, True),
         ("127.0.0.1", 8000, True),
-        ("172.19.160.104", 49152, False),
+        ("10.0.0.5", 49152, False),
     ]
 
 

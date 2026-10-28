@@ -133,7 +133,16 @@ def cargar_json(ruta: Path) -> dict:
 
 
 def fase_escaneo(
-    cfg, ips, fase, carpeta, aud_json, ejecutar, solo, sondear, alcance="completo"
+    cfg,
+    ips,
+    fase,
+    carpeta,
+    aud_json,
+    ejecutar,
+    solo,
+    sondear,
+    alcance="completo",
+    top_udp=50,
 ):
     """Una fase (tcp|udp) sobre los objetivos. Devuelve lo registrado en aud_json."""
     objetivos = [d for d in DISPOSITIVOS if d in solo]
@@ -147,7 +156,11 @@ def fase_escaneo(
                 )
                 aud_json["omitidos"].append(f"esp32-{fase}: /status no responde antes")
                 continue
-        args = ARGS_TCP if fase == "tcp" else ARGS_UDP
+        args = (
+            ARGS_TCP
+            if fase == "tcp"
+            else [str(top_udp) if a == "50" else a for a in ARGS_UDP]
+        )
         if d in ("esp32", "droidcam") and fase == "tcp" and alcance == "acotado":
             args = ["-p", puertos_acotados(), *[a for a in args if a != "-p-"]]
             args += ["--host-timeout", HOST_TIMEOUT_ESP32]
@@ -254,6 +267,12 @@ def main(
         help="puertos TCP de ESP32-CAM y DroidCam (el -p- completo no fue viable)",
     )
     ap.add_argument(
+        "--udp-top-ports",
+        type=int,
+        default=50,
+        help="puertos UDP más comunes a escanear",
+    )
+    ap.add_argument(
         "--solo", default=",".join(DISPOSITIVOS), help="subconjunto de objetivos"
     )
     ap.add_argument("--config", type=Path, default=RUTA_CONFIG)
@@ -307,6 +326,7 @@ def main(
                 solo,
                 sondear,
                 args.alcance,
+                args.udp_top_ports,
             )
             ruta_json.write_text(
                 json.dumps(aud_json, indent=2, ensure_ascii=False), encoding="utf-8"
