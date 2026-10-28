@@ -36,7 +36,7 @@ Código y pruebas: todo commiteado por módulo (sin push). Decisiones menores: `
 
 ## Pasos con hardware pendientes (esperan tu aviso)
 
-4. **Prueba de quórum** (`scripts/t2_3_prueba_quorum.py --ventanas`): no la lancé. Requiere que tapes cámaras y te muevas.
+4. **Prueba de quórum**: ejecutada el 2026-10-28 (11:38–11:41), aceptada por el autor tal cual para el informe. Resultado **sin editar**: A cumple (26 de 35 ventanas con alerta), B cumple (3 de 35; el criterio solo exige ≥ 1 alerta), **C NO cumple** (22 de 34 con alerta; se esperaba ninguna). Causa probable: los trapos no oscurecieron la ESP32-CAM ni DroidCam (nunca se marcaron `tapada`; solo lo hizo la cámara del Mac) y el autor tapó y se movió sin orden fijo, así que las fases no se ajustaron al guion. La lógica del quórum fue coherente con los votos (alerta si y solo si ≥ 2 votos True). Evidencia: `docs/T2_3_RESULTADOS.md`, `docs/evidencia/`.
 5. **Corrida de capas de 5 min** (`scripts/t2_4_capas.py`): no la lancé.
 6. ~~nmap UDP~~: hecho por el autor; resultados definitivos (AS principal 6,0 y 11,0; secundario de aplicación 2,0). Ver DISENO §26.
 
