@@ -77,3 +77,30 @@ def test_falta_clave_de_resolucion_local(tmp_path):
     ruta.write_text(texto)
     with pytest.raises(ErrorConfig, match="ancho"):
         cargar_config(ruta)
+
+
+def test_snapshots_dir_del_ejemplo_y_por_defecto(tmp_path):
+    from edge_parcial.config import RAIZ
+
+    assert cargar_config(RUTA_EJEMPLO).snapshots_dir == RAIZ / "data" / "snapshots"
+    # Sin la sección [rutas] se usa el valor por defecto.
+    texto = RUTA_EJEMPLO.read_text().replace("[rutas]", "[otra]")
+    ruta = tmp_path / "c.toml"
+    ruta.write_text(texto)
+    assert cargar_config(ruta).snapshots_dir == RAIZ / "data" / "snapshots"
+
+
+def test_snapshots_dir_personalizado_y_absoluto(tmp_path):
+    ruta = tmp_path / "c.toml"
+    ruta.write_text(
+        RUTA_EJEMPLO.read_text().replace('"data/snapshots"', f'"{tmp_path}/fotos"')
+    )
+    assert cargar_config(ruta).snapshots_dir == tmp_path / "fotos"
+
+
+@pytest.mark.parametrize("valor", ['""', "5"])
+def test_snapshots_dir_invalido(tmp_path, valor):
+    ruta = tmp_path / "c.toml"
+    ruta.write_text(RUTA_EJEMPLO.read_text().replace('"data/snapshots"', valor))
+    with pytest.raises(ErrorConfig, match="snapshots_dir"):
+        cargar_config(ruta)

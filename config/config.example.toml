@@ -8,7 +8,7 @@ ip = "192.168.43.100"
 distancia_m = 1.0
 # Velocidad nominal del enlace. 72,2 Mbps es la cifra de la tabla MCS de 802.11n
 # (HT20, MCS7, 1 flujo, guarda corta). La hoja técnica solo confirma "802.11n
-# MCS0-7 en 20 y 40 MHz" y "hasta 150 Mbps". Cita final: pendiente.
+# MCS0-7 en 20 y 40 MHz" y "hasta 150 Mbps".
 velocidad_nominal_bps = 72_200_000
 velocidad_nominal_fuente = "IEEE 802.11n, HT20, MCS7, 1 flujo, guarda corta (72,2 Mbps; 65 con guarda larga). La hoja de datos del ESP32 solo confirma MCS0-7 en 20/40 MHz y hasta 150 Mbps."
 
@@ -29,6 +29,10 @@ distancia_m = 0.0
 ancho = 1920
 alto = 1080
 jpeg_calidad = 50              # JPEG de referencia (solo tamaño y costo; fuera del e2e)
+
+[rutas]
+# Opcional. Carpeta de snapshots (JPEG con rostros: fuera de git). Relativa a la raíz del repo.
+snapshots_dir = "data/snapshots"
 
 [propagacion]
 # Velocidad de propagación para d/v (aire: c; se usa c por ser enlace inalámbrico).

@@ -7,6 +7,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[2]
 RUTA_CONFIG = RAIZ / "config" / "config.toml"
 RUTA_EJEMPLO = RAIZ / "config" / "config.example.toml"
+SNAPSHOTS_DIR_DEFECTO = "data/snapshots"
 
 
 class ErrorConfig(Exception):
@@ -53,6 +54,8 @@ class Config:
     local: FuenteLocal
     v_propagacion_m_s: float
     lector: ParamsLector
+    # Carpeta de snapshots (docs/CONTRATO_DATOS.md). Relativa = respecto a la raíz del repo.
+    snapshots_dir: Path = RAIZ / SNAPSHOTS_DIR_DEFECTO
 
 
 def _seccion(datos: dict, nombre: str) -> dict:
@@ -82,6 +85,19 @@ def _fuente_red(datos: dict, nombre: str, con_velocidad: bool) -> FuenteRed:
         puerto=int(s.get("puerto", 80)),
         url_imagen_fija=str(s.get("url_imagen_fija", "")),
     )
+
+
+def _snapshots_dir(datos: dict) -> Path:
+    """Clave opcional [rutas].snapshots_dir; sin ella, `data/snapshots`."""
+    rutas = datos.get("rutas", {})
+    if not isinstance(rutas, dict):
+        raise ErrorConfig("[rutas] debe ser una sección")
+    valor = rutas.get("snapshots_dir", SNAPSHOTS_DIR_DEFECTO)
+    if not isinstance(valor, str) or not valor.strip():
+        raise ErrorConfig(
+            "La clave 'snapshots_dir' de la sección [rutas] debe ser una ruta no vacía"
+        )
+    return RAIZ / valor.strip()  # una ruta absoluta sustituye a la raíz
 
 
 def cargar_config(ruta: Path | str | None = None) -> Config:
@@ -127,4 +143,5 @@ def cargar_config(ruta: Path | str | None = None) -> Config:
         ),
         v_propagacion_m_s=float(_clave(prop, "propagacion", "v_m_s")),
         lector=lector,
+        snapshots_dir=_snapshots_dir(datos),
     )
