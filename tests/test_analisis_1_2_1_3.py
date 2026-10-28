@@ -212,3 +212,20 @@ def test_script_tablas(tmp_path, capsys):
         mod.main(["--raw", str(tmp_path / "vacio"), "--salida", str(tmp_path / "s")])
         == 1
     )
+
+
+def test_unidad_excluida_repetida_con_exito_no_duplica(tmp_path):
+    from datos_sinteticos import escribir_corrida, filas_red
+
+    from edge_parcial.analysis import tarea_1_2_1_3 as t12
+    from edge_parcial.analysis.carga import cargar_corridas
+
+    validez = {"droidcam": {"valida": False, "motivos": ["abandonada"]}}
+    escribir_corrida(tmp_path, "a", filas_red("a", "droidcam", "/video", 30), fuentes=["droidcam"], validez=validez, corrida=1)  # fmt: skip
+    escribir_corrida(tmp_path, "b", filas_red("b", "droidcam", "/video", 30), fuentes=["droidcam"], corrida=1)  # fmt: skip
+    res = t12.resumenes(cargar_corridas(tmp_path))
+    assert list(res["run_id"]) == ["b"]
+    solo_mala = tmp_path / "x"
+    escribir_corrida(solo_mala, "c", filas_red("c", "droidcam", "/video", 30), fuentes=["droidcam"], validez=validez, corrida=1)  # fmt: skip
+    res2 = t12.resumenes(cargar_corridas(solo_mala))
+    assert list(res2["run_id"]) == ["c"] and not res2["utilizable"].iloc[0]

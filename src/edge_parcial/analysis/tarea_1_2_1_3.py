@@ -134,7 +134,20 @@ def resumenes(corridas: list[Corrida]) -> pd.DataFrame:
         for f in ORDEN_FUENTES:
             if f in c.fuentes:
                 filas.append(resumen_fuente(c, f))
-    return pd.DataFrame(filas)
+    return _sin_reemplazadas(pd.DataFrame(filas))
+
+
+def _sin_reemplazadas(res: pd.DataFrame) -> pd.DataFrame:
+    """Quita las unidades excluidas que fueron repetidas con éxito.
+
+    Si para (modo, corrida, fuente) existe una unidad utilizable, las excluidas de esa
+    misma clave son intentos fallidos reemplazados (los datos siguen en data/raw). Si no
+    hay ninguna utilizable, la exclusión se conserva y se muestra.
+    """
+    if res.empty:
+        return res
+    ok = res.groupby(["modo", "corrida", "fuente"])["utilizable"].transform("any")
+    return res[res["utilizable"] | ~ok].reset_index(drop=True)
 
 
 def _rotulo(fila) -> str:
