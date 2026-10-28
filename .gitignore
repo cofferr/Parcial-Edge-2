@@ -21,6 +21,11 @@ data/processed/*
 data/recordings/*
 !data/**/.gitkeep
 
+# Snapshots y rostros conocidos (contienen rostros)
+snapshots/
+data/snapshots/
+rostros_conocidos/
+
 # Cachés y sistema
 .pytest_cache/
 .ruff_cache/
