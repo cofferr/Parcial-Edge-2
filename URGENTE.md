@@ -47,3 +47,15 @@ Código y pruebas: todo commiteado por módulo (sin push). Decisiones menores: `
 9. **Contrato de datos** (`docs/CONTRATO_DATOS.md`, que no modifiqué): `eventos.csv` escribe votos y `alerta` como `1`/`0`; las rutas salen de `[rutas] eventos_csv` y `estado_json` (por defecto `data/eventos.csv` y `data/estado.json`); en `estado.json` el núcleo declara `ble` y `servicio_rostros` como `vivo: false` («no reportado por el núcleo»). Quien lea esos archivos (panel) debe saberlo.
 10. **Resultado del detector (evaluación offline sobre los 150 s guionizados, por ventana de 1 s)**: local 100 % de aciertos, DroidCam 96,2 %, ESP32 83,1 % (3 falsos positivos de 65 ventanas estáticas y 19 falsos negativos de 65 de actividad); el quórum Q = 2 acierta 98,5 % con 0 falsos positivos. La ESP32 (≈ 5 fps irregulares, ruido de su JPEG en gris) es la fuente más débil. **Ajuste posterior:** con `umbral_voto = 0.6` la ESP32 pasa a 0 FP de 65 (objetivo ≤ 1 %) pero su sensibilidad baja de 70,8 % a 63,1 % (aciertos 81,5 %); el quórum no cambia (98,5 %, 0 FP). Curva completa en `data/processed/t2_2_barrido_esp32.csv` y DISENO §23; el barrido es optimista (mismas ventanas que la evaluación). Detalle en `data/processed/t2_2_evaluacion.csv`.
 11. **Calibración**: tuve que descartar los primeros 5 s del segmento de calibración de 60 s (la persona se movía ~4 s al empezar la grabación). Con los 60 s completos, T_pix salía 94–96 y el detector casi no detectaba actividad. Si repites la grabación, quédate quieto desde el segundo 0.
+
+## Rama streamlit-app (2026-10-28): pendientes del autor
+
+12. ~~Rostros conocidos~~ Resuelto: copiados a `rostros_conocidos/` (ignorada por git), una foto por persona nombrada con la identidad.
+13. **Factores de reducción del servicio de rostros** (`esp32=1.0`, `droidcam=0.5`, `local=0.25`): valores iniciales sin validar con hardware; procedimiento de calibración en `docs/INTEGRACION.md`.
+14. **Definición de Q y regla de alerta:** el simulador usa `Q = n_true/3` y `alerta = n_true ≥ 2`, inventados solo para probar el panel. El panel muestra Q tal cual lo escriba el núcleo.
+15. ~~Quién escribe `reconocimientos.csv`~~ Resuelto: lo escribe el núcleo; el servicio de rostros no lo toca (contrato actualizado).
+16. **Rutas en la config:** tarea de la unión (ver `docs/INTEGRACION.md`); en esta rama quedan `--data-dir` / `EDGE_DATA_DIR`.
+17. **IP de la sesión (ESP32-CAM 172.19.160.181, DroidCam 172.19.160.129):** los módulos de esta rama no las usan; van solo en `config/config.toml` local (ignorado).
+18. **Sin hardware:** BLE, rostros y panel se probaron con un cliente BLE simulado, un reconocedor falso (más dlib sobre imagen vacía) y datos simulados. Falta una prueba con la ESP32 real y con una cara real.
+
+Streamlit, dlib y face_recognition instalaron sin problemas en Python 3.14: no hizo falta alternativa ni reconocedor falso por defecto.
