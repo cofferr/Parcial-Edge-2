@@ -169,7 +169,7 @@ class Nucleo:
                 self.entradas[f].viva() and reciente,
                 round(t.fps(), 2),
                 t.ultima_marca_wall,
-                self.entradas[f].errores(),
+                self.entradas[f].errores() + list(t.errores),
             )
         nucleo = entrada_estado(self._iniciado, None, ahora_iso(), list(self._errores))
         return estado_completo(camaras, nucleo)

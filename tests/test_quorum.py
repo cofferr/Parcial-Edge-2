@@ -220,3 +220,19 @@ def test_fog_decide_en_orden_con_los_tres_votos_y_con_timeout():
     assert [d.ventana for d in salida] == [0, 1]
     assert sorted(salida[1].caidas) == ["droidcam", "local"] and not salida[1].alerta
     assert salida[1].t_decision_ns == 3 * S  # sellado al decidir
+
+
+def test_un_fotograma_malo_no_mata_al_hilo_del_edge():
+    import time
+
+    votos = []
+    w = TrabajadorEdge("esp32", P, Rejilla(time.perf_counter_ns(), S), 0, votos.append)
+    w.start()
+    w.encolar(
+        FotogramaEdge("esp32", 0, time.perf_counter_ns(), None)
+    )  # imagen inválida
+    w.encolar(FotogramaEdge("esp32", 1, time.perf_counter_ns(), img()))
+    time.sleep(0.3)
+    w.detener()
+    w.join(2)
+    assert len(w.errores) == 1 and w.fotogramas == 1

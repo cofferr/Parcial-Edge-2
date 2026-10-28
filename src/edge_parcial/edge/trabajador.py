@@ -50,6 +50,7 @@ class TrabajadorEdge(threading.Thread):
         self.ultima_imagen = None
         self.ultima_marca_wall: str | None = None
         self.marcas_ns: deque[int] = deque()
+        self.errores: deque[str] = deque(maxlen=5)
         self.descartados = 0
         self.tardios = 0
         self.fotogramas = 0
@@ -76,7 +77,10 @@ class TrabajadorEdge(threading.Thread):
             except queue.Empty:
                 f = None
             if f is not None:
-                self._procesar(f)
+                try:
+                    self._procesar(f)
+                except Exception as e:  # noqa: BLE001 - un fotograma malo no debe matar a la fuente
+                    self.errores.append(f"{type(e).__name__}: {e}")
             self._cerrar_vencidas()
 
     def _procesar(self, f: FotogramaEdge) -> None:
