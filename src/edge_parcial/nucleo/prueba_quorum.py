@@ -102,7 +102,7 @@ def leer_eventos(ruta: Path, run_id: str) -> pd.DataFrame:
     return df
 
 
-def _espera(segundos: float, pantalla: Pantalla | None, nucleo: Nucleo, tick) -> None:
+def esperar(segundos: float, pantalla: Pantalla | None, nucleo: Nucleo, tick) -> None:
     """Espera `segundos` llamando a tick(restante_s) una vez por segundo; con `pantalla`
     dibuja las ventanas (hilo principal)."""
     fin = time.monotonic() + segundos
@@ -140,17 +140,17 @@ def ejecutar_prueba(
 ) -> list[dict]:
     """Ejecuta las fases con el núcleo ya iniciado. Devuelve los tiempos de cada fase."""
     consola(f"Calentamiento ({calentamiento_s:.0f} s): las fuentes se estabilizan; NO tapes nada.")  # fmt: skip
-    _espera(calentamiento_s, pantalla, nucleo, lambda s: None)
+    esperar(calentamiento_s, pantalla, nucleo, lambda s: None)
     tiempos = []
     for fase in fases:
         consola("")
         consola(f"=== FASE {fase.nombre}: {fase.descripcion} ===")
         consola(fase.instruccion())
         avisar(fase)
-        _espera(cuenta_s, pantalla, nucleo, lambda s, n=fase.nombre: consola(f"  fase {n} empieza en {s} s..."))  # fmt: skip
+        esperar(cuenta_s, pantalla, nucleo, lambda s, n=fase.nombre: consola(f"  fase {n} empieza en {s} s..."))  # fmt: skip
         consola(f">>> FASE {fase.nombre}: ¡YA! ({fase_s:.0f} s)")
         t_ini = perf_counter_ns()
-        _espera(fase_s, pantalla, nucleo, lambda s, n=fase.nombre: consola(f"  fase {n}: quedan {s} s") if s % 10 == 0 else None)  # fmt: skip
+        esperar(fase_s, pantalla, nucleo, lambda s, n=fase.nombre: consola(f"  fase {n}: quedan {s} s") if s % 10 == 0 else None)  # fmt: skip
         tiempos.append({
             "fase": fase.nombre, "descripcion": fase.descripcion, "tapadas": fase.tapadas,
             "debe_alertar": fase.debe_alertar, "t_ini_ns": t_ini, "t_fin_ns": perf_counter_ns(),

@@ -121,6 +121,9 @@ class EntradaRed:
     def errores(self) -> list[str]:
         return self._errores.lista()
 
+    def resumen(self) -> dict:
+        return self._lector.resumen.a_dict() if self._lector else {}
+
 
 class _AdaptadorCola:
     """Cola falsa para LectorLocal: convierte cada fotograma y lo entrega al edge."""
@@ -174,6 +177,12 @@ class EntradaLocal:
 
     def errores(self) -> list[str]:
         return self._errores.lista()
+
+    def resumen(self) -> dict:
+        return self._lector.resumen.a_dict() if self._lector else {}
+
+    def propiedades_camara(self) -> dict:
+        return self._props
 
 
 class EntradaSimulada:
@@ -236,6 +245,9 @@ class EntradaSimulada:
 
     def errores(self) -> list[str]:
         return []
+
+    def resumen(self) -> dict:
+        return {}
 
 
 def construir_entradas(
