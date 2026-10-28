@@ -229,3 +229,17 @@ def test_unidad_excluida_repetida_con_exito_no_duplica(tmp_path):
     escribir_corrida(solo_mala, "c", filas_red("c", "droidcam", "/video", 30), fuentes=["droidcam"], validez=validez, corrida=1)  # fmt: skip
     res2 = t12.resumenes(cargar_corridas(solo_mala))
     assert list(res2["run_id"]) == ["c"] and not res2["utilizable"].iloc[0]
+
+
+def test_corrida_con_mas_de_5_pct_de_errores_se_excluye_aunque_diga_valida(tmp_path):
+    from datos_sinteticos import escribir_corrida, filas_red
+
+    from edge_parcial.analysis import tarea_1_2_1_3 as t12
+    from edge_parcial.analysis.carga import cargar_corridas
+
+    filas = filas_red("a", "droidcam", "/video", 40)
+    for f in filas[-10:]:
+        f["error"] = "ErrorProtocolo: respuesta HTML"
+    escribir_corrida(tmp_path, "a", filas, fuentes=["droidcam"], corrida=1)
+    res = t12.resumenes(cargar_corridas(tmp_path))
+    assert not res["utilizable"].iloc[0] and "con error" in res["estado"].iloc[0]

@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from edge_parcial.acquisition.modelo import MAX_FRACCION_ERRORES
 from edge_parcial.analysis.carga import Corrida
 from edge_parcial.analysis.estadisticas import con_prefijo, estadisticos
 from edge_parcial.analysis.tablas import escribir_tabla
@@ -31,9 +32,19 @@ def estado_fuente(corrida: Corrida, fuente: str) -> tuple[bool, str]:
         return False, "fuente ausente en la corrida"
     if not validez["valida"]:
         return False, "inválida: " + "; ".join(validez["motivos"])
+    n_filas, n_error = _conteo_errores(corrida, fuente)
+    if n_filas and n_error / n_filas > MAX_FRACCION_ERRORES:
+        return False, f"{n_error} de {n_filas} fotogramas con error (> 5 %)"
     if con_reconexiones(corrida, fuente):
         return False, "con reconexiones entre fotogramas medidos (repetir la corrida)"
     return True, ""
+
+
+def _conteo_errores(corrida: Corrida, fuente: str) -> tuple[int, int]:
+    """(filas, filas con error) de la fuente, warmup incluido. Aplica la misma regla a
+    corridas anteriores a que el lector la validara."""
+    df = corrida.frames[corrida.frames["source"] == fuente]
+    return len(df), int(df["error"].notna().sum())
 
 
 def con_reconexiones(corrida: Corrida, fuente: str) -> bool:
