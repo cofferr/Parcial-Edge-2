@@ -48,3 +48,31 @@ recv_bytes = 65536             # tamaño del búfer de recv_into (64 KiB)
 timeout_conexion_s = 3.0
 timeout_inactividad_s = 5.0    # sin datos durante este tiempo = corte (o timeout en /capture)
 warmup_fotogramas = 20
+
+[quorum]
+# Parte 2 (docs/DISENO.md §24). Q = n // 2 + 1; n es el número de fuentes (3).
+n = 3
+ventana_s = 1.0
+gracia_s = 0.25                # espera tras el fin de la ventana para vaciar el edge
+timeout_fog_s = 1.0            # si una fuente no entrega su voto, cuenta False ("caida")
+
+# Rutas opcionales de la Parte 2 (en [rutas], arriba): eventos_csv = "data/eventos.csv",
+# estado_json = "data/estado.json".
+
+# Detector de movimiento por fuente (docs/DISENO.md §23). Calibrar con
+# `uv run python scripts/t2_2_calibrar.py --escribir-config`; no hay valores por defecto.
+# Opcionales por fuente o comunes en [detector]: tam_ancho, tam_alto, umbral_global,
+# salto_luminancia, umbral_oscuro, tapada_s, edad_ref_ms.
+# [detector.esp32]
+# t_pix = 0.0
+# t_area = 0.0
+# umbral_voto = 0.3
+
+[energia]
+# Parte 3 (docs/DISENO.md §27). Valores de referencia; verificar la cita.
+e_elec_j_bit = 50e-9           # 50 nJ/bit
+e_fs_j_bit_m2 = 10e-12         # 10 pJ/bit/m^2
+e_mp_j_bit_m4 = 0.0013e-12     # 0,0013 pJ/bit/m^4
+cita = "Heinzelman, Chandrakasan y Balakrishnan, IEEE Trans. Wireless Commun., 2002 (referencia por verificar)"
+# OBLIGATORIA, la da el autor; sin ella t3_energia.py no corre.
+distancia_esp32_ap_m = 1.0   # estimación, cota superior del montaje, en metros (ESP32-CAM -> punto de acceso)
