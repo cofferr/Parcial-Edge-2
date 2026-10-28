@@ -20,3 +20,15 @@ Estado al 2026-10-27, después de las mediciones con hardware. Código y pruebas
 9. **ESP32 en la grabación de la Tarea 1.6:** solo ≈ 2,5 FPS con las tres fuentes activas (92 fotogramas de calibración, 201 quietos, 191 de actividad). Su T_area calibrado (0,28) es alto por el ruido de su imagen en gris con JPEG q50; filtra menos que las otras fuentes.
 10. **Tprop del gateway y de DroidCam** son la misma IP (172.19.160.129, el celular del hotspot). Se midieron y se reportan ambos. El connect TCP al gateway no se mide (no expone puerto).
 11. **Intentos fallidos conservados en `data/raw`** (no se borró nada): una serie de tprop con `/status` caído al inicio, una con 97 muestras ICMP de la ESP32, 5 corridas aisladas de DroidCam inválidas por un defecto del parser (ya corregido) y un e2e de DroidCam con 311 errores de 320 (ya excluido por el análisis).
+
+## Rama streamlit-app (2026-10-28): pendientes del autor
+
+12. **Rostros conocidos:** crear `rostros_conocidos/` (ignorada por el control de versiones) con una foto por persona, nombrada con la identidad (`Juanjo.jpg`). Hay una en `~/Edge/tkinter/rostros_conocidos/`; no se copió al repo.
+13. **Factores de reducción del servicio de rostros** (`esp32=1.0`, `droidcam=0.5`, `local=0.25`): valores iniciales sin validar con hardware; ajustar con `--factor fuente=valor`.
+14. **Definición de Q y regla de alerta:** el simulador usa `Q = n_true/3` y `alerta = n_true ≥ 2`, inventados solo para probar el panel. El panel muestra Q tal cual lo escriba el núcleo.
+15. **Quién escribe `reconocimientos.csv`:** hoy el servicio de rostros solo responde por HTTP y no escribe el CSV; decidir al integrar (servicio o núcleo, nunca ambos).
+16. **Rutas en la config:** el contrato dice que las rutas de los archivos salen de `config.toml`, pero solo existe `snapshots_dir`. Se usan `--data-dir` / `EDGE_DATA_DIR` (por defecto `data/`). Propuesta: claves `[rutas]` para telemetría, eventos, reconocimientos y estado (cambio en `config.py`, no aplicado).
+17. **IP de la sesión (ESP32-CAM 172.19.160.181, DroidCam 172.19.160.129):** los módulos de esta rama no las usan; van solo en `config/config.toml` local (ignorado).
+18. **Sin hardware:** BLE, rostros y panel se probaron con un cliente BLE simulado, un reconocedor falso (más dlib sobre imagen vacía) y datos simulados. Falta una prueba con la ESP32 real y con una cara real.
+
+Streamlit, dlib y face_recognition instalaron sin problemas en Python 3.14: no hizo falta alternativa ni reconocedor falso por defecto.
