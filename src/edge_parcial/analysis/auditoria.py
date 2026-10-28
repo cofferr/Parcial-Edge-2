@@ -38,7 +38,10 @@ class Escucha:
 def parsear_nmap_xml(ruta: Path | str, protocolo_defecto: str = "tcp") -> list[dict]:
     """Filas (puerto, protocolo, estado, servicio, version, razon) de un XML de nmap."""
     filas = []
-    raiz = ET.parse(ruta).getroot()
+    try:
+        raiz = ET.parse(ruta).getroot()
+    except ET.ParseError:
+        return []  # XML truncado (escaneo abortado): sin puertos que reportar
     for p in raiz.iterfind("./host/ports/port"):
         estado = p.find("state")
         serv = p.find("service")

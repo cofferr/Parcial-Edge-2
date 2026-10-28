@@ -177,7 +177,7 @@ def test_script_con_nmap_simulado(tmp_path, monkeypatch):
         [
             "--fase",
             "tcp",
-            "--esp32-alcance",
+            "--alcance",
             "completo",
             "--config",
             str(_config_con_ips(tmp_path)),

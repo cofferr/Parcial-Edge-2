@@ -148,7 +148,7 @@ def fase_escaneo(
                 aud_json["omitidos"].append(f"esp32-{fase}: /status no responde antes")
                 continue
         args = ARGS_TCP if fase == "tcp" else ARGS_UDP
-        if d == "esp32" and fase == "tcp" and alcance == "acotado":
+        if d in ("esp32", "droidcam") and fase == "tcp" and alcance == "acotado":
             args = ["-p", puertos_acotados(), *[a for a in args if a != "-p-"]]
             args += ["--host-timeout", HOST_TIMEOUT_ESP32]
         if d == "esp32":
@@ -248,10 +248,10 @@ def main(
         "--run-id", help="continúa una auditoría existente (data/raw/<run_id>)"
     )
     ap.add_argument(
-        "--esp32-alcance",
+        "--alcance",
         choices=("acotado", "completo"),
         default="acotado",
-        help="puertos TCP de la ESP32-CAM (el -p- completo no es viable)",
+        help="puertos TCP de ESP32-CAM y DroidCam (el -p- completo no fue viable)",
     )
     ap.add_argument(
         "--solo", default=",".join(DISPOSITIVOS), help="subconjunto de objetivos"
@@ -306,7 +306,7 @@ def main(
                 ejecutar,
                 solo,
                 sondear,
-                args.esp32_alcance,
+                args.alcance,
             )
             ruta_json.write_text(
                 json.dumps(aud_json, indent=2, ensure_ascii=False), encoding="utf-8"
