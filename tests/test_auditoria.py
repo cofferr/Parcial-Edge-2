@@ -177,6 +177,8 @@ def test_script_con_nmap_simulado(tmp_path, monkeypatch):
         [
             "--fase",
             "tcp",
+            "--esp32-alcance",
+            "completo",
             "--config",
             str(_config_con_ips(tmp_path)),
             "--raw",
@@ -202,7 +204,7 @@ def test_script_con_nmap_simulado(tmp_path, monkeypatch):
         "--max-retries",
         "1",
     ] == esp[1:9]
-    assert "--max-rate" in esp
+    assert "--max-rate" in esp and "--stats-every" in esp
     assert "--max-rate" not in next(c for c in nmaps if c[-1] == "2.2.2.2")
     meta = json.loads(next(raw.glob("*/auditoria.json")).read_text())
     assert meta["esp32_dejo_de_responder"] is False
@@ -219,3 +221,13 @@ def test_script_sin_nmap_indica_brew(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(mod.shutil, "which", lambda _: None)
     assert mod.main(["--fase", "tcp"]) == 2
     assert "brew install nmap" in capsys.readouterr().err
+
+
+def test_alcance_acotado_de_la_esp32_y_host_timeout():
+    mod = _cargar_script()
+    puertos = mod.puertos_acotados()
+    tramos = [t.split("-") for t in puertos.split(",")]
+    cubiertos = {p for t in tramos for p in range(int(t[0]), int(t[-1]) + 1)}
+    assert set(range(1, 1025)) <= cubiertos
+    assert {81, 554, 8000, 8080, 8443, 8554, 4747, 5353, 7001, 1935} <= cubiertos
+    assert 1025 < len(cubiertos) < 3000  # 1-1024 + top 1000 + extras

@@ -43,29 +43,35 @@ ARGS_TCP = [
 ]
 ARGS_UDP = ["-sU", "--top-ports", "50", "-Pn", "--open", "--max-retries", "1"]
 MAX_RATE_ESP32 = "300"
+STATS = ["--stats-every", "60s"]
+# Cobertura acotada de la ESP32-CAM (el -p- completo no fue viable: ~4 puertos/s, > 4 h).
+PUERTOS_CAMARA = (81, 554, 8000, 8080, 8443, 8554, 4747, 5353, 7001, 1935)
+HOST_TIMEOUT_ESP32 = "10m"
 
 
-def ip_del_host(gateway_ip: str, config: Path) -> str:
-    """IP del Mac en la interfaz que lleva al gateway del hotspot (o [auditoria].host_ip)."""
-    with open(config, "rb") as f:
-        manual = tomllib.load(f).get("auditoria", {}).get("host_ip")
-    if manual:
-        return str(manual)
-    ruta = subprocess.run(
-        ["route", "-n", "get", gateway_ip],
+def interfaz_wifi() -> str:
+    """Dispositivo del puerto «Wi-Fi» (networksetup), p. ej. en0."""
+    out = subprocess.run(
+        ["networksetup", "-listallhardwareports"],
         check=False,
         capture_output=True,
         text=True,
         timeout=10,
     ).stdout
-    iface = next(
-        (ln.split(":")[1].strip() for ln in ruta.splitlines() if "interface:" in ln),
-        None,
-    )
-    if not iface:
-        raise RuntimeError(
-            f"No se pudo hallar la interfaz hacia {gateway_ip}; define [auditoria] host_ip"
-        )
+    lineas = out.splitlines()
+    for k, ln in enumerate(lineas):
+        if ln.strip() == "Hardware Port: Wi-Fi" and k + 1 < len(lineas):
+            return lineas[k + 1].split(":")[1].strip()
+    raise RuntimeError("No se encontró el puerto Wi-Fi; define [auditoria] host_ip")
+
+
+def ip_del_host(gateway_ip: str, config: Path) -> str:
+    """IP del Mac: `ipconfig getifaddr` de la interfaz Wi-Fi (o [auditoria].host_ip)."""
+    with open(config, "rb") as f:
+        manual = tomllib.load(f).get("auditoria", {}).get("host_ip")
+    if manual:
+        return str(manual)
+    iface = interfaz_wifi()
     ip = subprocess.run(
         ["ipconfig", "getifaddr", iface],
         check=False,
@@ -74,8 +80,34 @@ def ip_del_host(gateway_ip: str, config: Path) -> str:
         timeout=10,
     ).stdout.strip()
     if not ip:
-        raise RuntimeError(f"La interfaz {iface} no tiene IP")
+        raise RuntimeError(f"La interfaz Wi-Fi {iface} no tiene IP")
     return ip
+
+
+def puertos_acotados() -> str:
+    """1-1024, los 1000 TCP más comunes de nmap y los típicos de cámaras y servicios web."""
+    puertos = set(range(1, 1025)) | set(PUERTOS_CAMARA)
+    for base in (
+        "/opt/homebrew/share/nmap",
+        "/usr/local/share/nmap",
+        "/usr/share/nmap",
+    ):
+        ruta = Path(base) / "nmap-services"
+        if ruta.is_file():
+            filas = []
+            for ln in ruta.read_text(errors="ignore").splitlines():
+                c = ln.split()
+                if len(c) >= 3 and c[1].endswith("/tcp") and not ln.startswith("#"):
+                    filas.append((float(c[2]), int(c[1].split("/")[0])))
+            puertos |= {p for _, p in sorted(filas, reverse=True)[:1000]}
+            break
+    orden = sorted(puertos)
+    tramos, ini = [], orden[0]
+    for a, b in zip(orden, orden[1:] + [None], strict=True):
+        if b != a + 1:
+            tramos.append(f"{ini}-{a}" if a != ini else f"{ini}")
+            ini = b
+    return ",".join(tramos)
 
 
 def estado_esp32(cfg, etiqueta: str, registro: list) -> dict:
@@ -100,7 +132,9 @@ def cargar_json(ruta: Path) -> dict:
     return json.loads(ruta.read_text(encoding="utf-8")) if ruta.is_file() else {}
 
 
-def fase_escaneo(cfg, ips, fase, carpeta, aud_json, ejecutar, solo, sondear):
+def fase_escaneo(
+    cfg, ips, fase, carpeta, aud_json, ejecutar, solo, sondear, alcance="completo"
+):
     """Una fase (tcp|udp) sobre los objetivos. Devuelve lo registrado en aud_json."""
     objetivos = [d for d in DISPOSITIVOS if d in solo]
     for d in objetivos:
@@ -114,8 +148,12 @@ def fase_escaneo(cfg, ips, fase, carpeta, aud_json, ejecutar, solo, sondear):
                 aud_json["omitidos"].append(f"esp32-{fase}: /status no responde antes")
                 continue
         args = ARGS_TCP if fase == "tcp" else ARGS_UDP
+        if d == "esp32" and fase == "tcp" and alcance == "acotado":
+            args = ["-p", puertos_acotados(), *[a for a in args if a != "-p-"]]
+            args += ["--host-timeout", HOST_TIMEOUT_ESP32]
         if d == "esp32":
             args = [*args, "--max-rate", MAX_RATE_ESP32]
+        args = [*args, *STATS]
         rc = escanear(
             ejecutar, ips[d], args, carpeta / f"nmap_{d}_{fase}", fase == "udp"
         )
@@ -210,6 +248,12 @@ def main(
         "--run-id", help="continúa una auditoría existente (data/raw/<run_id>)"
     )
     ap.add_argument(
+        "--esp32-alcance",
+        choices=("acotado", "completo"),
+        default="acotado",
+        help="puertos TCP de la ESP32-CAM (el -p- completo no es viable)",
+    )
+    ap.add_argument(
         "--solo", default=",".join(DISPOSITIVOS), help="subconjunto de objetivos"
     )
     ap.add_argument("--config", type=Path, default=RUTA_CONFIG)
@@ -253,7 +297,17 @@ def main(
     print(f"Auditoría {run_id}; objetivos: {ips}")
     for fase in ("tcp", "udp"):
         if args.fase in (fase, "todo"):
-            fase_escaneo(cfg, ips, fase, carpeta, aud_json, ejecutar, solo, sondear)
+            fase_escaneo(
+                cfg,
+                ips,
+                fase,
+                carpeta,
+                aud_json,
+                ejecutar,
+                solo,
+                sondear,
+                args.esp32_alcance,
+            )
             ruta_json.write_text(
                 json.dumps(aud_json, indent=2, ensure_ascii=False), encoding="utf-8"
             )
