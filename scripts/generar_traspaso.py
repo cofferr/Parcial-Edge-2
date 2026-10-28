@@ -179,14 +179,17 @@ TAREAS = [
 ]
 
 NOTA_FASE_C = (
-    "**Nota sobre la fase C (resultado sin editar: NO cumple).** El autor declara que en la "
-    "fase C las cámaras estaban tapadas pese al resultado (22 de 34 ventanas con alerta; se "
-    "esperaba ninguna). La evidencia registrada matiza esa declaración y debe citarse junto "
-    "con ella: en `data/raw/20261028-113902-quorum/eventos.csv` solo la cámara local llega a "
-    "llevar la bandera `tapada` (37 ventanas); `esp32` y `droidcam` **nunca** la llevan, es "
-    "decir, que el detector no registró oscurecimiento en esas dos fuentes (URGENTE.md punto 4: "
-    "los trapos no las oscurecieron y las fases no siguieron el guion con orden fijo). La "
-    "lógica del quórum fue coherente con los votos (alerta si y solo si ≥ 2 votos True)."
+    "**Fase C (resultado sin editar: NO cumple), en tres partes.**\n\n"
+    "(a) *Lo que se hizo:* según la declaración del operador, tapó dos cámaras (esp32 y droidcam) "
+    "y se movió frente a la tercera.\n\n"
+    "(b) *Lo que muestra el registro:* hubo ventanas con alerta en la fase "
+    "(`t2_3_resumen.csv`) y la bandera `tapada` nunca se activó en `esp32` ni en `droidcam` "
+    "(`data/raw/20261028-113902-quorum/eventos.csv`); votos por ventana y luminancia, en "
+    "`informe/informe-parcial.md`.\n\n"
+    "(c) *Lectura honesta:* el sistema no confirma de forma independiente que estuvieran tapadas. "
+    "La causa probable es que la tapa no bajó la luminancia por debajo del umbral oscuro, o que el "
+    "voto se disparó por otro motivo; el registro no permite distinguirlas y no se califica como "
+    "problema de medición sin evidencia. Recomendación: repetir la fase C con tapa opaca."
 )
 
 

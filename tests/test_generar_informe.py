@@ -18,7 +18,9 @@ spec.loader.exec_module(gi)
 
 
 def test_fmt_redondea_solo_al_presentar():
-    assert gi.fmt("0.7428571428571429") == "0.743"
+    assert gi.fmt("0.7428571428571429") == "0.7429"
+    assert gi.fmt("3337.55") == "3337.550"
+    assert gi.fmt("0.0013352870039999999") == "0.001335"
     assert gi.fmt("300.0") == "300"
     assert gi.fmt("") == gi.SIN_DATO
     assert gi.fmt("2.670039999999596e-07") == "2.670e-07"
@@ -66,5 +68,7 @@ def test_generar_borrador_completo():
     ):
         assert f"## {seccion}" in doc
     assert gi.PEND in doc and gi.CITA in doc
-    assert "pese al resultado" in doc  # nota de la fase C
-    assert not re.search(r"\b(nan|None)\b", doc)
+    assert "(c) Lectura honesta" in doc and "tapa opaca" in doc  # fase C en tres partes
+    assert "Corridas descartadas" in doc and "E_{Rx}" in doc
+    # 'None -> ...' es texto literal del motivo de una corrida descartada.
+    assert not re.search(r"\b(nan|None(?! ->))\b", doc)

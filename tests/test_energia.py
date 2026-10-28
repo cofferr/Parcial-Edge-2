@@ -162,3 +162,13 @@ def test_script_se_niega_sin_distancia_y_corre_con_ella(tmp_path, capsys):
         assert (tmp_path / "out" / f"{n}.csv").is_file() and (tmp_path / "out" / f"{n}.tex").is_file()  # fmt: skip
     r = pd.read_csv(tmp_path / "out" / "t3_1_regimen.csv")
     assert r["regimen"].iloc[0] == "espacio_libre" and "d0" in r["razonamiento"].iloc[0]
+
+
+def test_e_rx_es_k_por_e_elec_y_no_depende_de_la_distancia():
+    assert en.e_rx(P, 1000) == pytest.approx(50e-9 * 1000)
+    k = {"media": 26700.4, "minimo": 24248.0, "maximo": 32416.0}
+    rx = en.tarea_3_1_rx(P, k)
+    assert list(rx["k_tipo"]) == ["media", "minimo", "maximo"]
+    assert rx["E_Rx_J"].tolist() == pytest.approx([50e-9 * b for b in k.values()])
+    # Complemento aparte: la tabla de 3.1 (E_Tx) no cambia ni lleva E_Rx.
+    assert "E_Rx_J" not in en.tarea_3_1(P, k).columns

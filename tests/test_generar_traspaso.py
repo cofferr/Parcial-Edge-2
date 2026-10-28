@@ -37,9 +37,12 @@ def test_tabla_md_copia_el_texto_sin_redondear(tmp_path, monkeypatch):
 
 
 def test_nota_de_la_fase_c_cita_la_evidencia():
-    assert "pese al resultado" in gt.NOTA_FASE_C
+    assert (
+        "(a)" in gt.NOTA_FASE_C and "(b)" in gt.NOTA_FASE_C and "(c)" in gt.NOTA_FASE_C
+    )
     assert "nunca" in gt.NOTA_FASE_C
-    assert "37 ventanas" in gt.NOTA_FASE_C
+    assert "tapa opaca" in gt.NOTA_FASE_C
+    assert "problema de medición" in gt.NOTA_FASE_C
 
 
 @pytest.mark.skipif(

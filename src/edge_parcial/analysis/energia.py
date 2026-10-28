@@ -3,6 +3,7 @@
 Modelo de radio de primer orden (docs/DISENO.md §27):
     E_Tx(k, d) = E_elec·k + E_fs·k·d²   si d <  d0
     E_Tx(k, d) = E_elec·k + E_mp·k·d⁴   si d >= d0,     d0 = √(E_fs / E_mp)
+    E_Rx(k)    = E_elec·k   (complemento: energía en el receptor; no entra en 3.1 ni en 3.2)
 Todo en julios, sin redondear. Los parámetros salen de `[energia]` de la config con su
 campo de cita; `distancia_esp32_ap_m` es obligatoria y la da el autor (no hay valor por defecto).
 """
@@ -83,6 +84,11 @@ def e_tx(p: ParamsEnergia, k_bits: float, d: float) -> float:
     return p.e_elec * k_bits + amp * k_bits
 
 
+def e_rx(p: ParamsEnergia, k_bits: float) -> float:
+    """Energía (J) de recibir k bits: E_elec·k. Es del receptor (el punto de acceso)."""
+    return p.e_elec * k_bits
+
+
 def _leer(ruta: Path | str) -> pd.DataFrame:
     ruta = Path(ruta)
     if not ruta.is_file():
@@ -121,6 +127,14 @@ def fracciones_esp32(ruta_ahorro: Path | str) -> pd.DataFrame:
     if t.empty:
         raise ErrorEnergia("La Tarea 1.6 no tiene filas de la ESP32-CAM")
     return t[["p", "p_valor", "f_frames", "f_bytes"]].reset_index(drop=True)
+
+
+def tarea_3_1_rx(p: ParamsEnergia, k: dict) -> pd.DataFrame:
+    """Complemento aparte: E_Rx(k) para el mismo k medio, mínimo y máximo (receptor)."""
+    nota = "complemento (receptor = punto de acceso); NO entra en E_Tx de 3.1 ni en el ahorro de 3.2"
+    return pd.DataFrame([
+        {"k_tipo": t, "k_bits": b, "E_Rx_J": e_rx(p, b), "nota": nota} for t, b in k.items()
+    ])  # fmt: skip
 
 
 def tarea_3_1(p: ParamsEnergia, k: dict) -> pd.DataFrame:

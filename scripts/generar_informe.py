@@ -4,7 +4,7 @@
 
 Ningún número se escribe a mano: todo valor sale de un CSV/JSON del proyecto (con su ruta) a
 través de `tabla()` y `v()`. Los CSV conservan los valores sin redondear; el borrador solo
-redondea al presentar (3 decimales; notación científica por debajo de 1e-3).
+redondea al presentar (3 decimales; 4 cifras significativas por debajo de 1; notación científica por debajo de 1e-3).
 """
 
 import argparse
@@ -15,9 +15,12 @@ import sys
 import tomllib
 from pathlib import Path
 
-from generar_traspaso import NOTA_FASE_C
-
-from edge_parcial.config import RAIZ
+from edge_parcial.analysis import energia as energia_mod
+from edge_parcial.analysis.carga import cargar_corridas
+from edge_parcial.analysis.tarea_1_2_1_3 import ORDEN_FUENTES, estado_fuente
+from edge_parcial.analysis.tprop import descubrir_tprop, resumen_tprop
+from edge_parcial.config import RAIZ, RUTA_EJEMPLO, cargar_config
+from edge_parcial.edge.detector import ParamsDetector
 
 PROC = "data/processed/"
 SIN_DATO = "—"
@@ -45,6 +48,8 @@ def fmt(x: str) -> str:
         return str(int(n))
     if n != 0 and abs(n) < 1e-3:
         return f"{n:.3e}"
+    if n != 0 and abs(n) < 1:
+        return f"{n:.4g}"  # 4 cifras significativas: fracciones y energías pequeñas no se aplastan
     return f"{n:.3f}"
 
 
@@ -97,8 +102,8 @@ def encabezado() -> str:
 > Borrador generado por `scripts/generar_informe.py`. No lo edites a mano: regenéralo.
 > **Trazabilidad:** cada número lleva entre paréntesis la ruta del CSV o JSON del que sale.
 > **Redondeo:** los CSV y los datos crudos (`data/raw/<run_id>/frames.csv`, marcas en ns) conservan
-> los valores sin redondear; este documento redondea solo al presentar (3 decimales; notación
-> científica por debajo de 1e-3). Los `.tex` de `data/processed/` llevan el mismo redondeo de presentación.
+> los valores sin redondear; este documento redondea solo al presentar (3 decimales; 4 cifras significativas
+> por debajo de 1; notación científica por debajo de 1e-3). Los `.tex` de `data/processed/` llevan el mismo redondeo de presentación.
 > **Parámetros de diseño** (60 s, 150 s, 1871 puertos, 160×120, 28 800 s, etc.) se citan de `docs/DISENO.md` y de `config/config.example.toml`, con su sección.
 > **Marcadores:** `{PEND}` = sección que redacta el consultor (se dejan debajo todos los números);
 > `{CITA}` = falta una referencia verificable; no se inventaron referencias.
@@ -124,7 +129,7 @@ Una fila por expresión del formulario de referencia del enunciado: dónde se ap
 | $L_{{total}} = L_{{device}} + L_{{edge}} + L_{{fog}} + L_{{cloud}}$ | 2.4 | Marcas `perf_counter_ns` por frontera (`{PROC}t2_4_capas.csv`). Sin capa Cloud: $L_{{cloud}}$ no existe en este pipeline (el enunciado lo prevé). |
 | $E_{{Tx}}(k, d)$ (LEACH) | 3.1, 3.2 | $k$ de la Tarea 1.2 (`{PROC}t3_1_energia_fotograma.csv`); $d$ = `[energia] distancia_esp32_ap_m` = {c["energia"]["distancia_esp32_ap_m"]} m; $E_{{elec}}$ = {en["e_elec_j_bit"]:.3e}, $E_{{fs}}$ = {en["e_fs_j_bit_m2"]:.3e}, $E_{{mp}}$ = {en["e_mp_j_bit_m4"]:.3e} (config; cita: {CITA}, la config dice «{en["cita"]}»). |
 | $d_0 = \\sqrt{{E_{{fs}}/E_{{mp}}}}$ | 3.1 | $d_0$ = {v("t3_1_energia_fotograma.csv", "d0_m", k_tipo="media")} m (`{PROC}t3_1_energia_fotograma.csv`). |
-| $E_{{Rx}}(k) = k\\,E_{{elec}}$ | — | **No aplicada:** las Tareas 3.1 y 3.2 piden solo energía de transmisión. Si se exige aplicarla, falta calcularla (ver cobertura). |
+| $E_{{Rx}}(k) = k\\,E_{{elec}}$ | 3.1 (complemento aparte) | Energía en el **receptor** (el punto de acceso) para el mismo $k$ de la Tarea 1.2 y $E_{{elec}}$ de la config. Media: {v("t3_1_energia_rx.csv", "E_Rx_J", k_tipo="media")} J (`{PROC}t3_1_energia_rx.csv`). **No entra** en la energía por fotograma transmitido de la 3.1 ni en el ahorro de la 3.2. |
 | $L^{{objetivo}}_{{URLLC}} \\le 1$ ms | 3.3 | Referencia del enunciado; `objetivo_ms` en `{PROC}t3_3_latencia_vs_1ms.csv`. |
 """
 
@@ -418,6 +423,149 @@ def t22() -> str:
 """
 
 
+# ---------------------------------------------------------------- fase C y corridas descartadas
+RUN_QUORUM = "20261028-113902-quorum"
+
+
+def csv_raw(run: str, nombre: str) -> list[dict]:
+    with (RAIZ / "data" / "raw" / run / nombre).open(encoding="utf-8", newline="") as f:
+        return list(csv.DictReader(f))
+
+
+def ventanas_fase_c(eventos: list[dict]) -> list[dict]:
+    """Ventanas de la fase C. Los tiempos de fase no se guardaron en la corrida: se toma el
+    tramo que termina en la última ventana y cuyos conteos coinciden con `t2_3_resumen.csv`."""
+    res = next(f for f in filas("t2_3_resumen.csv") if f["fase"] == "C")
+    objetivo = [int(res[c]) for c in ("ventanas", "alertas", "votos_true_esp32", "votos_true_droidcam", "votos_true_local")]  # fmt: skip
+    ordenadas = sorted(eventos, key=lambda e: int(e["ventana"]))
+    for ini in range(len(ordenadas) - 1, -1, -1):
+        sub = ordenadas[ini:]
+        if len(sub) > objetivo[0]:
+            break
+        conteos = [len(sub), sum(int(e["alerta"]) for e in sub)] + [sum(int(e[f"voto_{f}"]) for e in sub) for f in ("esp32", "droidcam", "local")]  # fmt: skip
+        if conteos == objetivo:
+            return sub
+    raise ValueError("no se pudo reconstruir la fase C desde eventos.csv")
+
+
+def fase_c_md() -> str:
+    ev = csv_raw(RUN_QUORUM, "eventos.csv")
+    sub = ventanas_fase_c(ev)
+    a, b = int(sub[0]["ventana"]), int(sub[-1]["ventana"])
+    umbral = ParamsDetector(t_pix=0, t_area=0).umbral_oscuro
+    tapada_s = ParamsDetector(t_pix=0, t_area=0).tapada_s
+    fuentes = ("esp32", "droidcam", "local")
+    filas_t = ["| ventana | esp32 (voto, bandera) | droidcam (voto, bandera) | local (voto, bandera) | votos True | alerta |", "|---|---|---|---|---|---|"]  # fmt: skip
+    for e in sub:
+        celdas = " | ".join(f"{e[f'voto_{f}']}, {e[f'bandera_{f}']}" for f in fuentes)
+        filas_t.append(f"| {e['ventana']} | {celdas} | {e['n_true']} | {e['alerta']} |")
+    cuentas = []
+    for f in fuentes:
+        c = {}
+        for e in sub:
+            c[e[f"bandera_{f}"]] = c.get(e[f"bandera_{f}"], 0) + 1
+        cuentas.append(
+            f"- `{f}`: " + ", ".join(f"`{k}` {n}" for k, n in sorted(c.items()))
+        )
+    tapada_total = {
+        f: sum(1 for e in ev if e[f"bandera_{f}"] == "tapada") for f in fuentes
+    }
+    fot = [
+        r
+        for r in csv_raw(RUN_QUORUM, "capas_fotogramas.csv")
+        if r["ventana"] != "" and a <= int(r["ventana"]) <= b
+    ]
+    lum_filas = ["| fuente | fotogramas | luminancia media | mínima | máxima | con luminancia < umbral oscuro | marcados `tapada` |", "|---|---|---|---|---|---|---|"]  # fmt: skip
+    for f in fuentes:
+        lums = [
+            float(r["luminancia"])
+            for r in fot
+            if r["source"] == f and r["luminancia"] not in ("", "nan")
+        ]
+        marcados = sum(1 for r in fot if r["source"] == f and r["tapada"] == "1")
+        bajo = sum(1 for x in lums if x < umbral)
+        media = sum(lums) / len(lums)
+        lum_filas.append(f"| {f} | {len(lums)} | {fmt(repr(media))} | {fmt(repr(min(lums)))} | {fmt(repr(max(lums)))} | {bajo} | {marcados} |")  # fmt: skip
+    return f"""**Fase C (resultado sin editar: no cumple), en tres partes.**
+
+**(a) Lo que se hizo.** Según la declaración del operador, durante la fase C tapó dos cámaras (esp32 y droidcam) y se movió frente a la tercera (local), siguiendo la indicación de la consola (`data/raw/{RUN_QUORUM}/consola.log`). Es una declaración del operador: el sistema no la registra por sí mismo.
+
+**(b) Lo que muestra el registro.** Ventanas {a} a {b} de `data/raw/{RUN_QUORUM}/eventos.csv` (las {len(sub)} de la fase; los tiempos de fase no se guardaron en la corrida y el tramo se reconstruyó por coincidencia exacta con `{PROC}t2_3_resumen.csv`: ventanas, alertas y votos por fuente). Votos y banderas por ventana:
+
+{chr(10).join(filas_t)}
+
+Banderas por fuente en esas ventanas:
+
+{chr(10).join(cuentas)}
+
+La bandera `tapada` **nunca se activó en `esp32` ni en `droidcam`** ({tapada_total["esp32"]} y {tapada_total["droidcam"]} ventanas con esa bandera en toda la corrida); solo se activó en `local` ({tapada_total["local"]} ventanas en toda la corrida, ninguna de ellas dentro de la fase C). Luminancia media por fotograma en las ventanas de la fase, frente al umbral oscuro del detector ({umbral:g} niveles, valor por defecto de `ParamsDetector.umbral_oscuro`, que la config de la sesión no sobrescribe; la bandera exige además ≥ {tapada_s:g} s seguido bajo el umbral) (`data/raw/{RUN_QUORUM}/capas_fotogramas.csv`):
+
+{chr(10).join(lum_filas)}
+
+**(c) Lectura honesta.** El sistema no confirma de forma independiente que las cámaras estuvieran tapadas. La luminancia registrada de `esp32` y `droidcam` en la fase permaneció por encima del umbral oscuro (tabla anterior), por lo que el detector nunca las marcó como tapadas y siguió evaluando movimiento en ellas. Son compatibles con el registro, sin que este permita distinguirlas, dos explicaciones: que la tapa no bajara la luminancia por debajo del umbral oscuro durante el tiempo exigido, o que el voto se disparara por otro motivo (por ejemplo, cambios de la escena que la tapa no impidió). No se califica como un problema de medición, porque no hay evidencia que lo respalde. **Recomendación:** repetir la fase C con una tapa opaca. La fase se conserva en el informe con su resultado sin editar.
+"""
+
+
+def descartadas_md() -> str:
+    raw = RAIZ / "data" / "raw"
+    cfg = cargar_config(RUTA_EJEMPLO)
+    corridas = cargar_corridas(raw)
+    filas_d: list[tuple[str, str, str, str, str]] = []
+    tp = descubrir_tprop(raw)
+    validas = [m["run_id"] for m, _ in tp if m.get("valida")]
+    for meta, df in tp:
+        res = resumen_tprop(df, cfg).set_index("fuente")
+        motivos = []
+        if not meta.get("valida"):
+            motivos += meta.get("motivos_invalida") or ["inválida"]
+        for f in ("esp32", "droidcam"):
+            if f in res.index and not bool(res.loc[f, "muestras_icmp_suficientes"]):
+                motivos.append(
+                    f"{f}: {int(res.loc[f, 'rtt_icmp_ms_n'])} muestras ICMP (< 100 exigidas)"
+                )
+        if motivos:
+            filas_d.append((meta["run_id"], "1.4", "esp32, droidcam", "; ".join(motivos), validas[-1] if validas else SIN_DATO))  # fmt: skip
+    for c in corridas:
+        if c.tarea not in ("1.2_1.3", "1.5"):
+            continue
+        for f in ORDEN_FUENTES:
+            if f not in c.fuentes:
+                continue
+            ok, motivo = estado_fuente(c, f)
+            if ok:
+                continue
+            extra = ""
+            if c.tarea == "1.2_1.3" and f == "droidcam":
+                extra = " (defecto del parser: DroidCam declara `boundary=--dcmjpeg` y envía `--dcmjpeg`; corregido y repetido)"  # fmt: skip
+            repl = [o.run_id for o in corridas if o.tarea == c.tarea and o.modo == c.modo and o.numero == c.numero and f in o.fuentes and estado_fuente(o, f)[0]]  # fmt: skip
+            filas_d.append(
+                (c.run_id, c.tarea, f, motivo + extra, repl[-1] if repl else SIN_DATO)
+            )
+    for d in sorted(raw.iterdir()):
+        log = d / "consola.log"
+        if (
+            d.is_dir()
+            and not (d / "metadata.json").is_file()
+            and log.is_file()
+            and "abortada" in log.read_text(encoding="utf-8")
+        ):
+            filas_d.append(
+                (
+                    d.name,
+                    "2.3",
+                    "esp32, droidcam, local",
+                    "prueba abortada con `q`",
+                    RUN_QUORUM,
+                )
+            )
+    cab = [
+        "| Identificador | Tarea | Fuente | Motivo | Reemplazada por | Ruta |",
+        "|---|---|---|---|---|---|",
+    ]
+    cuerpo = [f"| `{i}` | {t} | {f} | {m.replace('|', chr(92) + '|')} | `{r}` | `data/raw/{i}/` |" if r != SIN_DATO else f"| `{i}` | {t} | {f} | {m} | {SIN_DATO} | `data/raw/{i}/` |" for i, t, f, m, r in filas_d]  # fmt: skip
+    return "\n".join([*cab, *cuerpo])
+
+
 def t23() -> str:
     q = cfg_ejemplo()["quorum"]["n"]
     return f"""## Tarea 2.3: lógica de quórum
@@ -431,7 +579,7 @@ def t23() -> str:
 **Resumen por fase de la prueba de quórum** (votos `True` por fuente de las ventanas de cada fase; `alertas` = ventanas con ≥ $Q$ votos):
 
 {tabla("t2_3_resumen.csv")}
-{NOTA_FASE_C}
+{fase_c_md()}
 
 **Discusión (descriptiva):** las fases A y B cumplen lo esperado y la C no ({v("t2_3_resumen.csv", "alertas", fase="C")} alertas en {v("t2_3_resumen.csv", "ventanas", fase="C")} ventanas, cuando se esperaba ninguna). La lógica del quórum fue coherente con los votos registrados (alerta si y solo si ≥ 2 votos `True`); el resultado de la fase C se presenta sin editar.
 """
@@ -508,19 +656,43 @@ def reto2() -> str:
     }"""
 
 
+def sensibilidad_distancia() -> str:
+    p = energia_mod.cargar_params(RAIZ / "config" / "config.example.toml")
+    k = float(filas("t3_1_energia_fotograma.csv")[0]["k_bits"])  # fila "media"
+    d0 = energia_mod.d0(p)
+    casos = [("unos 30 cm (Mac a las cámaras, declaración del autor)", 0.3), ("distancia de la config (cota superior)", p.distancia_m), ("d = d0 (cambio de régimen)", d0)]  # fmt: skip
+    cab = [
+        "| Caso | d (m) | régimen | E_Tx por fotograma, k medio (J) |",
+        "|---|---|---|---|",
+    ]
+    cuerpo = [f"| {n} | {fmt(repr(d))} | {energia_mod.regimen(p, d)[0]} | {fmt(repr(energia_mod.e_tx(p, k, d)))} |" for n, d in casos]  # fmt: skip
+    return (
+        "\n".join([*cab, *cuerpo])
+        + "\n\n_(cálculo con `edge_parcial.analysis.energia` y `[energia]` de `config/config.example.toml`; $k$ de `"
+        + PROC
+        + "t3_1_energia_fotograma.csv`)_\n"
+    )
+
+
 def t31() -> str:
     en = cfg_ejemplo()["energia"]
     return f"""## Tarea 3.1: estimación de energía de transmisión
 
 **Qué se pidió:** «Usando el tamaño de fotograma que mediste en la Tarea 1.2 (en bits, no en bytes) y una distancia realista entre el ESP32-CAM y tu punto de acceso Wi-Fi [...] aplica el modelo de energía de radio del formulario. [...] decidir, con justificación, qué régimen aplica ($d < d_0$ o $d \\ge d_0$) y de dónde tomas los valores de $E_{{elec}}$, $E_{{fs}}$ y $E_{{mp}}$ (deben venir de una fuente citable, no inventados). Reporta la energía estimada por fotograma transmitido.»
 
-**Procedimiento** (`docs/DISENO.md` §27, `scripts/t3_energia.py`): $k$ = tamaño del fotograma de la ESP32-CAM de la Tarea 1.2 en bits (media, mínimo, máximo; `{PROC}tablas/t1_2_tamano_aislada.csv`); $E_{{Tx}}(k, d) = k E_{{elec}} + k E_{{fs}} d^2$ si $d < d_0$ o $k E_{{elec}} + k E_{{mp}} d^4$ si $d \\ge d_0$, con $d_0 = \\sqrt{{E_{{fs}}/E_{{mp}}}}$. Parámetros de `[energia]` en `config/config.example.toml`: $E_{{elec}}$ = {en["e_elec_j_bit"]:.3e} J/bit, $E_{{fs}}$ = {en["e_fs_j_bit_m2"]:.3e} J/bit/m², $E_{{mp}}$ = {en["e_mp_j_bit_m4"]:.3e} J/bit/m⁴. $d$ = {en["distancia_esp32_ap_m"]} m (estimación del autor, «cota superior del montaje»; la config la declara obligatoria y el script se niega a correr sin ella). **Fuente de los parámetros:** {CITA}; la config registra «{en["cita"]}» y el propio campo dice que la cita está por verificar.
+**Procedimiento** (`docs/DISENO.md` §27, `scripts/t3_energia.py`): $k$ = tamaño del fotograma de la ESP32-CAM de la Tarea 1.2 en bits (media, mínimo, máximo; `{PROC}tablas/t1_2_tamano_aislada.csv`); $E_{{Tx}}(k, d) = k E_{{elec}} + k E_{{fs}} d^2$ si $d < d_0$ o $k E_{{elec}} + k E_{{mp}} d^4$ si $d \\ge d_0$, con $d_0 = \\sqrt{{E_{{fs}}/E_{{mp}}}}$. Parámetros de `[energia]` en `config/config.example.toml`: $E_{{elec}}$ = {en["e_elec_j_bit"]:.3e} J/bit, $E_{{fs}}$ = {en["e_fs_j_bit_m2"]:.3e} J/bit/m², $E_{{mp}}$ = {en["e_mp_j_bit_m4"]:.3e} J/bit/m⁴. $d$ = {en["distancia_esp32_ap_m"]} m, **valor declarado por el autor y usado como cota superior del montaje**: el operador midió unos 30 cm del Mac a las cámaras y estimó 1 m hasta el celular (declaración del autor, no una medición del sistema); la config declara la distancia obligatoria y el script se niega a correr sin ella. **Fuente de los parámetros:** {CITA}; la config registra «{en["cita"]}» y el propio campo dice que la cita está por verificar.
 
 **Régimen y razonamiento** (de `{PROC}t3_1_regimen.csv`): {v("t3_1_regimen.csv", "razonamiento")}
 
 **Resultados** (energía por fotograma transmitido, en J; `k_bits` en bits, `d_m` y `d0_m` en m):
 
 {tabla("t3_1_energia_fotograma.csv")}
+**Complemento aparte: energía de recepción $E_{{Rx}}(k) = k\\,E_{{elec}}$** para el mismo $k$ (energía en el receptor, el punto de acceso). **No entra** en la energía por fotograma transmitido de arriba ni en el ahorro de la Tarea 3.2.
+
+{tabla("t3_1_energia_rx.csv", ["k_tipo", "k_bits", "E_Rx_J"])}
+**Sensibilidad a la distancia** (cálculo con las mismas funciones y parámetros de `scripts/t3_energia.py`, para el $k$ medio; no es una salida del script): el régimen ($d < d_0$) y el orden de magnitud de la energía no dependen del valor exacto de $d$.
+
+{sensibilidad_distancia()}
 **Discusión (descriptiva):** la energía media por fotograma es {v("t3_1_energia_fotograma.csv", "E_Tx_J", k_tipo="media")} J, de la cual el término electrónico es {v("t3_1_energia_fotograma.csv", "E_electronica_J", k_tipo="media")} J y el del amplificador {v("t3_1_energia_fotograma.csv", "E_amplificador_J", k_tipo="media")} J. Como $d$ < $d_0$, el amplificador sigue el modelo de espacio libre.
 """
 
@@ -612,12 +784,19 @@ Registro completo de `docs/DECISIONES_AUTONOMAS.md` (cada fila: fecha, paso, dec
 
 {chr(10).join(tabla_dec)}
 
+**Corridas descartadas** (se conservaron en `data/raw/`, nada se borró; el análisis solo usa las válidas y las repetidas que las reemplazan):
+
+{descartadas_md()}
+
 **Desviaciones respecto al plan o al enunciado:**
 
 - Corrida de capas de 180 s en lugar de 300 s (petición del autor; `docs/DECISIONES_AUTONOMAS.md`, fila P2-4).
 - Prueba de quórum aceptada con la fase C marcada «no cumple», cifras sin editar (`docs/T2_3_RESULTADOS.md`, fila P2-3).
 - Sin capa Cloud (el enunciado prevé que la tarea no llega hasta ahí).
 - $t_{{request}}$ de `/capture` sellado tras conectar: el connect queda fuera del e2e de la ESP32 (`docs/DISENO.md` §19.2).
+- Distancia ESP32→AP de 1,0 m: valor declarado por el autor, cota superior del montaje (no «de ejemplo»; un mensaje de un commit anterior la llamó así y esta documentación lo corrige sin reescribir historia).
+- $E_{{Rx}}$ aplicada una vez como complemento aparte (Tarea 3.1); no entra en 3.1 ni en 3.2.
+- Fase C del quórum: registrada sin editar, con la lectura en tres partes de la Tarea 2.3 y la recomendación de repetirla con tapa opaca.
 - Interpretación de las Tareas 1.2/1.3/1.6 (tamaño, $t_{{tx}}$, $f$ = fracción transmitida): ver `URGENTE.md`.
 """
 
@@ -664,7 +843,7 @@ def cobertura() -> str:
         (
             "Tarea 2.3: derivar $Q$, implementar, tapar 1 y 2 cámaras, logs",
             "Tarea 2.3",
-            "Hecho; fase C no cumple (sin editar)",
+            "Evidencia parcial: se recomienda repetir la fase C con tapa opaca",
         ),
         (
             "Tarea 2.4: $L_{device}$, $L_{edge}$, $L_{fog}$, $L_{total}$ y fuente de la diferencia",
@@ -684,7 +863,7 @@ def cobertura() -> str:
         (
             "Tarea 3.1: $E_{Tx}$ por fotograma, régimen y fuente de parámetros",
             "Tarea 3.1",
-            f"Hecho; cita de $E_{{elec}}, E_{{fs}}, E_{{mp}}$: {CITA}",
+            f"Hecho; $E_{{Rx}}$ como complemento aparte; cita de $E_{{elec}}, E_{{fs}}, E_{{mp}}$: {CITA}",
         ),
         ("Tarea 3.2: ahorro 8 h en J y %", "Tarea 3.2", "Hecho"),
         (
@@ -700,7 +879,7 @@ def cobertura() -> str:
         (
             "Entregable 2: cada fórmula aplicada con la fuente de cada valor",
             "Fórmulas aplicadas",
-            "Hecho salvo $E_{Rx}$ (no aplicada)",
+            "Hecho ($E_{Rx}$ aplicada como complemento aparte en la 3.1)",
         ),
         (
             "Entregable 3: los dos retos desarrollados por completo",
