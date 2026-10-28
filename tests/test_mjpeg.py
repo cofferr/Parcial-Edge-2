@@ -238,3 +238,24 @@ def test_jpeg_valido():
     assert jpeg_valido(hacer_jpeg(1))
     assert not jpeg_valido(b"\xff\xd8")
     assert not jpeg_valido(b"abcdef")
+
+
+@pytest.mark.parametrize("trozo", [10_000, 1])
+def test_boundary_con_prefijo_doble_como_droidcam(trozo):
+    # DroidCam declara boundary=--dcmjpeg y envía "--dcmjpeg" (no "----dcmjpeg").
+    jpegs = [hacer_jpeg(i) for i in range(3)]
+    datos = cabecera_http(boundary="--dcmjpeg") + b"".join(
+        parte(j, boundary="dcmjpeg") for j in jpegs
+    )
+    trozos = [datos[i : i + trozo] for i in range(0, len(datos), trozo)]
+    fs, _ = alimentar(ParserMJPEG(), trozos)
+    assert [f.payload for f in fs] == jpegs
+
+
+def test_boundary_con_prefijo_doble_segun_rfc_sigue_valiendo():
+    jpegs = [hacer_jpeg(i) for i in range(2)]
+    datos = cabecera_http(boundary="--x") + b"".join(
+        parte(j, boundary="--x") for j in jpegs
+    )
+    fs, _ = alimentar(ParserMJPEG(), [datos])
+    assert [f.payload for f in fs] == jpegs

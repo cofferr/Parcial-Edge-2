@@ -138,6 +138,7 @@ class ParserMJPEG:
         self._n_recv = 0
         self._estado = "HEAD"
         self._delim: bytes | None = None
+        self._delim_alt: bytes | None = None
         self._parte: dict = {}
         self._recorrido: _Recorrido | None = None
         self._fallback = False
@@ -258,7 +259,11 @@ class ParserMJPEG:
             for p in ct.split(";")[1:]:
                 k, _, v = p.strip().partition("=")
                 if k.lower() == "boundary" and v:
-                    self._delim = b"--" + v.strip('"').encode("latin-1")
+                    valor = v.strip('"').encode("latin-1")
+                    self._delim = b"--" + valor
+                    # DroidCam declara boundary=--dcmjpeg pero envía "--dcmjpeg" (sin el
+                    # prefijo extra del RFC): se acepta el valor tal cual si ya empieza con "--".
+                    self._delim_alt = valor if valor.startswith(b"--") else None
         self._consumir(i + 4)
         self._estado = "PARTE"
         return True
@@ -280,6 +285,19 @@ class ParserMJPEG:
                 raise ErrorProtocolo(f"se esperaba delimitador, llegó {linea[:20]!r}")
             self._delim = linea
         d = self._delim
+        alt = self._delim_alt
+        if (
+            alt is not None
+        ):  # decide una sola vez cuál de los dos delimitadores usa el servidor
+            casa_d = self._buf[: min(len(self._buf), len(d))] == d[: len(self._buf)]
+            casa_alt = (
+                self._buf[: min(len(self._buf), len(alt))] == alt[: len(self._buf)]
+            )
+            if casa_d and casa_alt:
+                return False  # aún ambiguo: faltan bytes
+            if casa_alt:
+                self._delim = d = alt
+            self._delim_alt = None
         m = min(len(self._buf), len(d))
         if self._buf[:m] != d[:m]:
             raise ErrorProtocolo(f"se esperaba {d!r}, llegó {bytes(self._buf[:m])!r}")
