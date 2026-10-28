@@ -74,6 +74,9 @@ def evento_vacio() -> dict:
     return dict.fromkeys(COLUMNAS_EVENTOS)
 
 
+MAX_FRACCION_ERRORES = 0.05  # más errores que esto invalida la fuente de la corrida
+
+
 @dataclass
 class Resumen:
     """Resumen de un lector. Seguro entre hilos."""
@@ -134,6 +137,11 @@ class Resumen:
         if self.esperadas and self.cabeceras_faltantes:
             falt = ", ".join(sorted(self.cabeceras_faltantes))
             motivos.append(f"cabeceras obligatorias ausentes: {falt}")
+        if self.fotogramas and self.errores / self.fotogramas > MAX_FRACCION_ERRORES:
+            motivos.append(
+                f"{self.errores} de {self.fotogramas} fotogramas con error "
+                f"(> {100 * MAX_FRACCION_ERRORES:.0f} %)"
+            )
         return motivos + list(self.motivos_extra)
 
     def a_dict(self) -> dict:

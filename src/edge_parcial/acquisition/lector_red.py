@@ -392,3 +392,9 @@ class LectorAperturaStream(LectorCapture):
     _TIPO_PARSER = "stream"
     _CONNECTION = "keep-alive"
     _T_REQ_ANTES_DE_CONECTAR = True
+    # DroidCam atiende un solo stream y tarda en liberarlo: si se reabre enseguida
+    # responde con su página HTML (1168 B). Medido: 0,2 s -> 0/4 streams; 0,5 s -> 4/4.
+    PAUSA_MIN_S = 0.6
+
+    def __init__(self, *args, pausa_s: float = 0.0, **kw) -> None:
+        super().__init__(*args, pausa_s=max(pausa_s, self.PAUSA_MIN_S), **kw)

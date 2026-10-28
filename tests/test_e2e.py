@@ -10,7 +10,10 @@ from escenario import ServidorFalso, config_hacia, manejador_droidcam, manejador
 
 from edge_parcial import metadata
 from edge_parcial.acquisition.lector_local import CamaraSimulada
+from edge_parcial.acquisition.lector_red import LectorAperturaStream
 from edge_parcial.config import RAIZ
+
+PAUSA_REAL_S = LectorAperturaStream.PAUSA_MIN_S
 
 
 @pytest.fixture(autouse=True)
@@ -18,6 +21,8 @@ def sin_hardware(monkeypatch):
     monkeypatch.setattr(
         metadata, "leer_wifi_mac", lambda: {"tasa_transmision_mbps": 144.0}
     )
+    # el servidor falso no necesita la pausa que exige DroidCam real
+    monkeypatch.setattr(LectorAperturaStream, "PAUSA_MIN_S", 0.0)
 
 
 def cargar_script():
@@ -98,3 +103,22 @@ def test_argumentos_invalidos(tmp_path):
     mod = cargar_script()
     assert mod.main(["--fuentes", "x"]) == 2
     assert mod.main(["--config", str(tmp_path / "no.toml")]) == 2
+
+
+def test_muchos_errores_invalidan_la_fuente():
+    from edge_parcial.acquisition.modelo import Resumen
+
+    r = Resumen("droidcam", "/video")
+    r.sumar(fotogramas=100, errores=10)
+    assert any("con error" in m for m in r.motivos_invalida())
+    ok = Resumen("droidcam", "/video")
+    ok.sumar(fotogramas=100, errores=3)
+    assert not ok.motivos_invalida()
+
+
+def test_apertura_droidcam_impone_pausa_minima():
+    from edge_parcial.acquisition.lector_red import LectorAperturaStream
+
+    assert (
+        LectorAperturaStream.PAUSA_MIN_S >= 0.5
+    )  # DroidCam libera el stream en <= 0,5 s
