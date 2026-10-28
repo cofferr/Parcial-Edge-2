@@ -23,11 +23,11 @@ Estado al 2026-10-27, después de las mediciones con hardware. Código y pruebas
 
 ## Rama streamlit-app (2026-10-28): pendientes del autor
 
-12. **Rostros conocidos:** crear `rostros_conocidos/` (ignorada por el control de versiones) con una foto por persona, nombrada con la identidad (`Juanjo.jpg`). Hay una en `~/Edge/tkinter/rostros_conocidos/`; no se copió al repo.
-13. **Factores de reducción del servicio de rostros** (`esp32=1.0`, `droidcam=0.5`, `local=0.25`): valores iniciales sin validar con hardware; ajustar con `--factor fuente=valor`.
+12. ~~Rostros conocidos~~ Resuelto: copiados a `rostros_conocidos/` (ignorada por git), una foto por persona nombrada con la identidad.
+13. **Factores de reducción del servicio de rostros** (`esp32=1.0`, `droidcam=0.5`, `local=0.25`): valores iniciales sin validar con hardware; procedimiento de calibración en `docs/INTEGRACION.md`.
 14. **Definición de Q y regla de alerta:** el simulador usa `Q = n_true/3` y `alerta = n_true ≥ 2`, inventados solo para probar el panel. El panel muestra Q tal cual lo escriba el núcleo.
-15. **Quién escribe `reconocimientos.csv`:** hoy el servicio de rostros solo responde por HTTP y no escribe el CSV; decidir al integrar (servicio o núcleo, nunca ambos).
-16. **Rutas en la config:** el contrato dice que las rutas de los archivos salen de `config.toml`, pero solo existe `snapshots_dir`. Se usan `--data-dir` / `EDGE_DATA_DIR` (por defecto `data/`). Propuesta: claves `[rutas]` para telemetría, eventos, reconocimientos y estado (cambio en `config.py`, no aplicado).
+15. ~~Quién escribe `reconocimientos.csv`~~ Resuelto: lo escribe el núcleo; el servicio de rostros no lo toca (contrato actualizado).
+16. **Rutas en la config:** tarea de la unión (ver `docs/INTEGRACION.md`); en esta rama quedan `--data-dir` / `EDGE_DATA_DIR`.
 17. **IP de la sesión (ESP32-CAM 172.19.160.181, DroidCam 172.19.160.129):** los módulos de esta rama no las usan; van solo en `config/config.toml` local (ignorado).
 18. **Sin hardware:** BLE, rostros y panel se probaron con un cliente BLE simulado, un reconocedor falso (más dlib sobre imagen vacía) y datos simulados. Falta una prueba con la ESP32 real y con una cara real.
 
