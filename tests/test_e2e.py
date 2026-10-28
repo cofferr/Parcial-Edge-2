@@ -117,8 +117,4 @@ def test_muchos_errores_invalidan_la_fuente():
 
 
 def test_apertura_droidcam_impone_pausa_minima():
-    from edge_parcial.acquisition.lector_red import LectorAperturaStream
-
-    assert (
-        LectorAperturaStream.PAUSA_MIN_S >= 0.5
-    )  # DroidCam libera el stream en <= 0,5 s
+    assert PAUSA_REAL_S >= 0.5  # DroidCam libera el stream en <= 0,5 s
