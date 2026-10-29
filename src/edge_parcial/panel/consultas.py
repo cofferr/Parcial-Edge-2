@@ -74,6 +74,21 @@ def telemetria_reciente(rutas: Rutas, n: int = 120) -> pd.DataFrame:
     return preparar_telemetria(leer_csv(rutas.telemetria, ultimas=n))
 
 
+def _etiquetas_ventana(df: pd.DataFrame) -> list[str]:
+    """«HH:MM:SS #n» por ventana (la marca de tiempo sale de ts_wall; sin ella, solo «#n»)."""
+    horas = (
+        pd.to_datetime(
+            df["ts_wall"].astype(str).str.slice(0, 19), errors="coerce"
+        ).dt.strftime("%H:%M:%S")
+        if "ts_wall" in df.columns
+        else pd.Series([None] * len(df))
+    )
+    return [
+        f"{h} #{v}" if isinstance(h, str) else f"#{v}"
+        for h, v in zip(horas, df["ventana"], strict=True)
+    ]
+
+
 def ventanas_recientes(rutas: Rutas, n: int = 20) -> pd.DataFrame:
     """Filas = esp32, droidcam, local, alerta; columnas = número de ventana (0/1)."""
     df = leer_csv(rutas.eventos, ultimas=n)
@@ -86,7 +101,7 @@ def ventanas_recientes(rutas: Rutas, n: int = 20) -> pd.DataFrame:
     tabla = (
         df[list(columnas)].apply(pd.to_numeric, errors="coerce").fillna(0).astype(int)
     )
-    tabla.index = df["ventana"].values
+    tabla.index = _etiquetas_ventana(df)
     return tabla.rename(columns=columnas).T
 
 
@@ -252,3 +267,144 @@ def valores_distintos(df: pd.DataFrame, columna: str) -> list[str]:
     if df.empty or columna not in df.columns:
         return []
     return sorted({str(v) for v in df[columna].fillna("")} - {""})
+
+
+# -- alerta visible y unión alerta <-> reconocimiento ---------------------------------------
+
+NOMBRE_DESCONOCIDO = "DESCONOCIDO"
+
+
+def _nombre(identidad: str) -> str:
+    return (
+        NOMBRE_DESCONOCIDO
+        if str(identidad).strip().lower() == "desconocido"
+        else str(identidad)
+    )
+
+
+@dataclass(frozen=True)
+class AlertaVista:
+    ventana: int
+    ts_wall: str
+    edad_s: float
+    n_true: int
+    q: int
+    estado: str  # «reconociendo», «identificado» o «sin_rostro»
+    nombres: list[str]
+    snapshot: Path | None
+
+
+def alerta_activa(
+    rutas: Rutas,
+    ahora: datetime | None = None,
+    mantener_s: float = 10.0,
+    espera_rostro_s: float = 6.0,
+) -> AlertaVista | None:
+    """La alerta del quórum de los últimos `mantener_s` segundos, con quién fue reconocido.
+
+    Mientras el servicio de rostros no responde (hasta `espera_rostro_s`) el estado es
+    «reconociendo»; si pasa ese tiempo sin ninguna cara, «sin_rostro».
+    """
+    ahora = ahora or datetime.now().astimezone()
+    ev = leer_csv(rutas.eventos, ultimas=30)
+    if ev.empty or not {"alerta", "ts_wall", "ventana"} <= set(ev.columns):
+        return None
+    ev = ev[ev["alerta"].astype(str).isin(["1", "True", "true"])]
+    if ev.empty:
+        return None
+    fila = ev.iloc[-1]
+    try:
+        ts = datetime.fromisoformat(str(fila["ts_wall"]))
+        if ts.tzinfo is None:
+            ts = ts.astimezone()
+        edad = (ahora - ts).total_seconds()
+    except ValueError:
+        return None
+    if edad > mantener_s:
+        return None
+    sesion = str(fila.get("session_id", "") or "")
+    rec = leer_csv(rutas.reconocimientos, ultimas=40)
+    nombres, snap = [], None
+    if not rec.empty and {"ventana_ref", "identidad"} <= set(rec.columns):
+        mismos = rec[rec["ventana_ref"].astype(str) == str(fila["ventana"])]
+        if sesion and "session_id" in mismos.columns:
+            mismos = mismos[mismos["session_id"].fillna("") == sesion]
+        for r in mismos.itertuples():
+            n = _nombre(r.identidad)
+            if n not in nombres:
+                nombres.append(n)
+            ruta = rutas.snapshots / Path(str(r.snapshot)).name
+            if ruta.is_file():
+                snap = ruta
+    estado = (
+        "identificado"
+        if nombres
+        else ("reconociendo" if edad < espera_rostro_s else "sin_rostro")
+    )
+    try:
+        n_true, q = int(float(fila.get("n_true", 0))), int(float(fila.get("Q", 0)))
+    except ValueError:
+        n_true, q = 0, 0
+    return AlertaVista(
+        int(float(fila["ventana"])),
+        str(fila["ts_wall"]),
+        edad,
+        n_true,
+        q,
+        estado,
+        nombres,
+        snap,
+    )
+
+
+def unir_alertas(
+    ev: pd.DataFrame, rec: pd.DataFrame, tolerancia_s: float = 30.0
+) -> pd.DataFrame:
+    """Una fila por ventana con alerta y quién fue reconocido (unión por sesión, ventana y hora)."""
+    columnas = [
+        "ts_wall",
+        "ventana",
+        "n_true",
+        "votaron",
+        "reconocidos",
+        "snapshot",
+        "session_id",
+    ]
+    if ev.empty or "alerta" not in ev.columns:
+        return pd.DataFrame(columns=columnas)
+    alertas = ev[ev["alerta"].astype(str).isin(["1", "True", "true"])]
+    t_rec = (
+        pd.to_datetime(rec["ts_wall"], errors="coerce", utc=True)
+        if not rec.empty
+        else None
+    )
+    filas = []
+    for a in alertas.itertuples():
+        votaron = "+".join(
+            f for f in FUENTES if str(getattr(a, f"voto_{f}", "")) in ("1", "True")
+        )
+        nombres, snap = [], ""
+        if t_rec is not None and "ventana_ref" in rec.columns:
+            t_a = pd.to_datetime(a.ts_wall, errors="coerce", utc=True)
+            cerca = rec[
+                (rec["ventana_ref"].astype(str) == str(a.ventana))
+                & (rec["session_id"].fillna("") == getattr(a, "session_id", ""))
+                & ((t_rec - t_a).abs() <= pd.Timedelta(seconds=tolerancia_s))
+            ]
+            for r in cerca.itertuples():
+                n = _nombre(r.identidad)
+                if n not in nombres:
+                    nombres.append(n)
+                snap = snap or str(r.snapshot)
+        filas.append(
+            {
+                "ts_wall": a.ts_wall,
+                "ventana": a.ventana,
+                "n_true": a.n_true,
+                "votaron": votaron,
+                "reconocidos": ", ".join(nombres) if nombres else "—",
+                "snapshot": snap,
+                "session_id": getattr(a, "session_id", ""),
+            }
+        )
+    return pd.DataFrame(filas, columns=columnas)
