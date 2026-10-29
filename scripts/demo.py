@@ -14,12 +14,16 @@ import logging
 import signal
 from pathlib import Path
 
+from edge_parcial.panel.datos import rutas_por_defecto
 from edge_parcial.panel.orquestador import (
     PUERTO_PANEL,
     Orquestador,
     proceso_nucleo,
     procesos_demo,
 )
+from edge_parcial.panel.respaldo import respaldar
+from edge_parcial.rostros.reconocedor import CARPETA_ROSTROS
+from edge_parcial.sesion import nueva_sesion
 
 
 def main() -> None:
@@ -39,15 +43,21 @@ def main() -> None:
 
     # El núcleo abre las tres cámaras; con --simular no hay cámaras que abrir.
     con_nucleo = not (args.sin_nucleo or args.simular)
+    sesion = nueva_sesion()  # session_id común a todos los procesos de esta demo
     procesos = procesos_demo(
         args.data_dir,
         args.puerto_panel,
         ble=not args.sin_ble,
         rostros=not args.sin_rostros,
         simular=args.simular,
-        ganchos=[lambda: proceso_nucleo(args.data_dir)] if con_nucleo else [],
+        sesion=sesion,
+        ganchos=[lambda: proceso_nucleo(args.data_dir, sesion)] if con_nucleo else [],
     )
     orq = Orquestador(procesos)
+    # Copia de seguridad previa (solo copia) de data/*.csv y rostros_conocidos/.
+    respaldo = respaldar(rutas_por_defecto(args.data_dir).base, CARPETA_ROSTROS)
+    if respaldo:
+        print(f"Respaldo en {respaldo}")
     # Las señales se convierten en KeyboardInterrupt para pasar por el mismo cierre.
     signal.signal(signal.SIGTERM, signal.default_int_handler)
     try:

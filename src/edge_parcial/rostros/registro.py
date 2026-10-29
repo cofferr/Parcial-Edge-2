@@ -6,14 +6,19 @@ rechaza toda muestra que no tenga EXACTAMENTE un rostro. La carpeta está fuera 
 
 import re
 import shutil
+from datetime import datetime
 from pathlib import Path
 
 import cv2
 import numpy as np
 
+from edge_parcial.csv_anexar import ruta_libre
 from edge_parcial.rostros.reconocedor import CARPETA_ROSTROS, LOCK_DLIB
 
 NOMBRE_VALIDO = re.compile(r"^[\wáéíóúüñÁÉÍÓÚÜÑ][\wáéíóúüñÁÉÍÓÚÜÑ .-]{0,39}$")
+
+
+ARCHIVO = "_archivo"  # personas dadas de baja (se conservan)
 
 
 class ErrorRegistro(ValueError):
@@ -64,7 +69,7 @@ def agregar_muestra(
     siguiente = 1 + max(
         (int(p.stem) for p in destino.glob("*.jpg") if p.stem.isdigit()), default=0
     )
-    ruta = destino / f"{siguiente}.jpg"
+    ruta = ruta_libre(destino / f"{siguiente}.jpg")
     if not cv2.imwrite(str(ruta), bgr):
         raise ErrorRegistro("No se pudo guardar la muestra en disco.")
     return ruta
@@ -77,6 +82,8 @@ def listar(carpeta: Path | str = CARPETA_ROSTROS) -> dict[str, int]:
         return {}
     personas: dict[str, int] = {}
     for e in sorted(carpeta.iterdir()):
+        if e.name.startswith(("_", ".")):
+            continue  # _archivo y similares: no cuentan como personas
         if e.is_dir():
             n = sum(
                 1 for a in e.iterdir() if a.suffix.lower() in (".jpg", ".jpeg", ".png")
@@ -88,17 +95,26 @@ def listar(carpeta: Path | str = CARPETA_ROSTROS) -> dict[str, int]:
     return personas
 
 
-def borrar(nombre: str, carpeta: Path | str = CARPETA_ROSTROS) -> int:
-    """Borra todas las muestras de la persona; devuelve cuántos archivos eliminó."""
+def archivar(nombre: str, carpeta: Path | str = CARPETA_ROSTROS) -> int:
+    """Quita a la persona del reconocimiento SIN borrar nada: sus muestras se mueven a
+    `_archivo/<Nombre>__<fecha>/` (el servicio ignora las carpetas que empiezan con «_»).
+    Devuelve cuántas muestras archivó."""
     nombre = validar_nombre(nombre)
     carpeta = Path(carpeta)
-    borrados = 0
-    destino = carpeta / nombre
-    if destino.is_dir():
-        borrados += sum(1 for a in destino.iterdir() if a.is_file())
-        shutil.rmtree(destino)
-    for e in carpeta.glob(f"{nombre}.*"):
-        if e.is_file() and e.stem == nombre:
-            e.unlink()
-            borrados += 1
-    return borrados
+    destino = ruta_libre(
+        carpeta / ARCHIVO / f"{nombre}__{datetime.now():%Y%m%d-%H%M%S}"
+    )
+    muestras = []
+    if (carpeta / nombre).is_dir():
+        muestras += [a for a in (carpeta / nombre).iterdir() if a.is_file()]
+    muestras += [
+        e for e in carpeta.glob(f"{nombre}.*") if e.is_file() and e.stem == nombre
+    ]
+    if not muestras:
+        return 0
+    destino.mkdir(parents=True)
+    for m in muestras:
+        shutil.move(str(m), destino / m.name)
+    if (carpeta / nombre).is_dir() and not any((carpeta / nombre).iterdir()):
+        (carpeta / nombre).rmdir()  # carpeta vacía: no se pierde ningún dato
+    return len(muestras)

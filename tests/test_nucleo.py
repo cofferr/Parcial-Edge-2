@@ -166,11 +166,13 @@ def test_eventos_csv_cabecera_una_vez_solo_anade_y_flush_por_fila(tmp_path):
     assert ruta.read_text().count("run_id,ts_wall") == 1
 
 
-def test_eventos_csv_rechaza_otra_cabecera(tmp_path):
+def test_eventos_csv_con_otra_cabecera_aparta_el_viejo_sin_perderlo(tmp_path):
     ruta = tmp_path / "e.csv"
     ruta.write_text("a,b\n1,2\n")
-    with pytest.raises(salidas.ErrorEsquema):
-        salidas.EventosCSV(ruta, "r")
+    salidas.EventosCSV(ruta, "r").cerrar()
+    assert ruta.read_text().splitlines()[0].split(",") == salidas.COLUMNAS_EVENTOS
+    aparte = [p for p in tmp_path.iterdir() if p.name != "e.csv"]
+    assert [p.read_text() for p in aparte] == ["a,b\n1,2\n"]
 
 
 def test_linea_log_tiene_alerta_solo_si_hay_alerta():

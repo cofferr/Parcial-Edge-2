@@ -31,7 +31,8 @@ def test_trama_de_longitud_incorrecta():
         decodificar(b"\x00" * 6)
 
 
-def test_escritor_cabecera_una_sola_vez(tmp_path):
+def test_escritor_cabecera_una_sola_vez(tmp_path, monkeypatch):
+    monkeypatch.setenv("EDGE_SESION", "S1")
     ruta = tmp_path / "t.csv"
     ts = datetime(2026, 10, 28, 14, 0, tzinfo=UTC)
     for _ in range(2):
@@ -39,7 +40,7 @@ def test_escritor_cabecera_una_sola_vez(tmp_path):
     filas = list(csv.reader(ruta.open()))
     assert filas[0] == COLUMNAS
     assert len(filas) == 3
-    assert filas[1] == [
+    assert filas[1][:-1] == [
         "2026-10-28T14:00:00+00:00",
         "22.80",
         "57.80",
@@ -48,6 +49,7 @@ def test_escritor_cabecera_una_sola_vez(tmp_path):
         "",
         "e8 08 94 16 ff ff 00",
     ]
+    assert filas[1][-1] == "S1"  # session_id
 
 
 class FuenteFalsa:

@@ -9,7 +9,12 @@ from streamlit.testing.v1 import AppTest
 
 from edge_parcial.rostros import registro
 from edge_parcial.rostros.reconocedor import ReconocedorDlib
-from edge_parcial.rostros.registro import ErrorRegistro, agregar_muestra, borrar, listar
+from edge_parcial.rostros.registro import (
+    ErrorRegistro,
+    agregar_muestra,
+    archivar,
+    listar,
+)
 
 PAGINA = str(Path(__file__).resolve().parent.parent / "app" / "paginas" / "registro.py")
 
@@ -39,8 +44,11 @@ def test_varias_muestras_por_persona_listar_y_borrar(tmp_path):
     agregar_muestra("Luis", _jpeg(), tmp_path, contar=lambda _: 1)
     (tmp_path / "Pedro.jpg").write_bytes(_jpeg())  # formato de la app original
     assert listar(tmp_path) == {"Ana María": 3, "Luis": 1, "Pedro": 1}
-    assert borrar("Ana María", tmp_path) == 3 and borrar("Pedro", tmp_path) == 1
+    assert archivar("Ana María", tmp_path) == 3 and archivar("Pedro", tmp_path) == 1
     assert listar(tmp_path) == {"Luis": 1}
+    # nada se borró: las muestras siguen en _archivo
+    guardadas = [p for p in (tmp_path / "_archivo").rglob("*") if p.is_file()]
+    assert len(guardadas) == 4
 
 
 def test_reconocedor_recarga_sin_reiniciar(tmp_path, monkeypatch):
@@ -59,7 +67,7 @@ def test_reconocedor_recarga_sin_reiniciar(tmp_path, monkeypatch):
     agregar_muestra("Ana", _jpeg(), tmp_path, contar=lambda _: 1)
     agregar_muestra("Ana", _jpeg(), tmp_path, contar=lambda _: 1)
     assert rec.recargar_si_cambio() is True and rec.nombres == ["Ana", "Ana"]
-    borrar("Ana", tmp_path)
+    archivar("Ana", tmp_path)
     assert rec.recargar_si_cambio() is True and rec.nombres == []
 
 

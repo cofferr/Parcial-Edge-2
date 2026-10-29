@@ -58,15 +58,20 @@ def estado_componentes(
     return vistas
 
 
-def telemetria_reciente(rutas: Rutas, n: int = 120) -> pd.DataFrame:
-    """Últimas n lecturas con tipos numéricos y `timestamp` como índice."""
-    df = leer_csv(rutas.telemetria, ultimas=n)
+def preparar_telemetria(df: pd.DataFrame) -> pd.DataFrame:
+    """Tipos numéricos y `timestamp` como índice (descarta filas sin marca de tiempo válida)."""
     if df.empty:
         return df
+    df = df.copy()
     for c in ("temperatura_c", "humedad_pct", "movimiento"):
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
     return df.dropna(subset=["timestamp"]).set_index("timestamp")
+
+
+def telemetria_reciente(rutas: Rutas, n: int = 120) -> pd.DataFrame:
+    """Últimas n lecturas con tipos numéricos y `timestamp` como índice."""
+    return preparar_telemetria(leer_csv(rutas.telemetria, ultimas=n))
 
 
 def ventanas_recientes(rutas: Rutas, n: int = 20) -> pd.DataFrame:

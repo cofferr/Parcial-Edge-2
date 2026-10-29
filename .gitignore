@@ -48,3 +48,11 @@ informe/*.out
 data/.panel.*
 data/*.lock
 data/control.json
+config/*.bak-*
+
+# Respaldos y restauraciones de datos (pueden contener rostros)
+data/_respaldo/
+data/_restaurado/
+data/*.restaurado-*
+data/*.antes-*
+data/eventos.v1-*

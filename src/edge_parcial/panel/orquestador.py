@@ -11,6 +11,7 @@ from pathlib import Path
 
 from edge_parcial.config import RAIZ
 from edge_parcial.panel.datos import VARIABLE_ENTORNO, VARIABLE_ORQUESTADO
+from edge_parcial.sesion import VARIABLE as VARIABLE_SESION
 
 log = logging.getLogger("edge_parcial.demo")
 
@@ -29,9 +30,11 @@ def _py(*args: str) -> list[str]:
     return [sys.executable, *args]
 
 
-def proceso_nucleo(data_dir: Path | None = None) -> Proceso:
+def proceso_nucleo(data_dir: Path | None = None, sesion: str | None = None) -> Proceso:
     """Núcleo con las tres cámaras (sin ventanas de OpenCV). Las rutas salen de la config."""
     env = {VARIABLE_ENTORNO: str(data_dir)} if data_dir else {}
+    if sesion:
+        env[VARIABLE_SESION] = sesion
     return Proceso("nucleo", _py(str(RAIZ / "scripts" / "t2_nucleo.py")), env)
 
 
@@ -43,10 +46,13 @@ def procesos_demo(
     simular: bool = False,
     panel: bool = True,
     visor: bool = True,
+    sesion: str | None = None,
     ganchos: Sequence[Callable[[], Proceso | None]] = (),
 ) -> list[Proceso]:
     """Comandos de la demo. Los ganchos permiten añadir componentes (el núcleo)."""
     env = {VARIABLE_ENTORNO: str(data_dir)} if data_dir else {}
+    if sesion:
+        env[VARIABLE_SESION] = sesion  # todos los hijos comparten el session_id
     # El panel lanzado por la demo no debe lanzar de nuevo los componentes.
     env_panel = {**env, VARIABLE_ORQUESTADO: "1"}
     base = ["--data-dir", str(data_dir)] if data_dir else []

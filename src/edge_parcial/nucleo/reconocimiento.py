@@ -12,6 +12,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+from edge_parcial.csv_anexar import ruta_libre
 from edge_parcial.panel.datos import COLUMNAS_RECONOCIMIENTOS, EscritorCSV
 from edge_parcial.rostros.servicio import HOST, PUERTO
 
@@ -95,7 +96,9 @@ class DespachadorRostros:
         archivo = f"{fuente}_{ahora:%Y%m%d_%H%M%S_%f}"[:-3] + ".jpg"
         try:
             self.carpeta.mkdir(parents=True, exist_ok=True)
-            (self.carpeta / archivo).write_bytes(jpeg)
+            destino = ruta_libre(self.carpeta / archivo)
+            archivo = destino.name
+            destino.write_bytes(jpeg)
         except OSError as e:
             self.error(f"snapshot: {e}")
             return

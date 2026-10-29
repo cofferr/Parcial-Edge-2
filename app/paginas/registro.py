@@ -51,6 +51,6 @@ if not personas:
 for persona, n in personas.items():
     c1, c2 = st.columns([4, 1])
     c1.markdown(f"**{persona}** · {n} {'muestra' if n == 1 else 'muestras'}")
-    if c2.button("Borrar", key=f"borrar_{persona}"):
-        registro.borrar(persona)
+    if c2.button("Archivar", key=f"archivar_{persona}", help="Se conserva en _archivo"):
+        registro.archivar(persona)
         st.rerun()

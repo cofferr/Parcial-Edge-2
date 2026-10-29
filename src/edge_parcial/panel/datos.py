@@ -10,6 +10,8 @@ import pandas as pd
 
 from edge_parcial.ble.telemetria import COLUMNAS
 from edge_parcial.config import RAIZ, SNAPSHOTS_DIR_DEFECTO, ErrorConfig, cargar_config
+from edge_parcial.csv_anexar import preparar_csv
+from edge_parcial.sesion import sesion_actual
 
 COLUMNAS_TELEMETRIA = COLUMNAS
 COLUMNAS_EVENTOS = [
@@ -29,6 +31,7 @@ COLUMNAS_EVENTOS = [
     "marca",
     "evidencia_fuente",
     "evidencia_foto",
+    "session_id",
 ]
 COLUMNAS_RECONOCIMIENTOS = [
     "ts_wall",
@@ -37,6 +40,7 @@ COLUMNAS_RECONOCIMIENTOS = [
     "identidad",
     "distancia",
     "snapshot",
+    "session_id",
 ]
 FUENTES = ("esp32", "droidcam", "local")
 VARIABLE_ENTORNO = "EDGE_DATA_DIR"
@@ -92,13 +96,16 @@ def rutas_por_defecto(base: Path | str | None = None) -> Rutas:
 
 
 class EscritorCSV:
-    """Escritor de solo añadir: cabecera una vez, fila completa con flush."""
+    """Escritor de solo añadir: cabecera una vez, fila completa con flush.
+
+    Si el archivo existe con otra cabecera, el viejo se aparta (no se pierde). La columna
+    `session_id`, si existe, se rellena sola con la sesión actual.
+    """
 
     def __init__(self, ruta: Path | str, columnas: list[str]) -> None:
         self.ruta = Path(ruta)
         self.columnas = columnas
-        self.ruta.parent.mkdir(parents=True, exist_ok=True)
-        if not self.ruta.exists() or self.ruta.stat().st_size == 0:
+        if preparar_csv(self.ruta, columnas):
             self._escribir(columnas)
 
     def _escribir(self, fila: list) -> None:
@@ -107,6 +114,8 @@ class EscritorCSV:
             f.flush()
 
     def agregar(self, fila: dict) -> None:
+        if "session_id" in self.columnas and "session_id" not in fila:
+            fila = {**fila, "session_id": sesion_actual()}
         self._escribir([fila.get(c, "") for c in self.columnas])
 
 

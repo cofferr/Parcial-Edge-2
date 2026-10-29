@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from edge_parcial.config import RAIZ, RUTA_CONFIG, Config, ErrorConfig, cargar_config
+from edge_parcial.csv_anexar import copia_con_fecha
 from edge_parcial.edge.detector import ParamsDetector
 
 FUENTES = ("esp32", "droidcam", "local")
@@ -101,6 +102,7 @@ def escribir_secciones_detector(
     """Sustituye (o añade) las secciones `[detector.<fuente>]` de la config, sin tocar el resto."""
     ruta = Path(ruta)
     texto = ruta.read_text(encoding="utf-8")
+    copia_con_fecha(ruta)  # nunca se pierde la configuración anterior
     for fuente in params:
         texto = re.sub(
             rf"^\[detector\.{fuente}\]\n(?:(?!\[).*\n?)*", "", texto, flags=re.MULTILINE

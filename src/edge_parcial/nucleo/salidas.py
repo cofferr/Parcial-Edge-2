@@ -12,7 +12,9 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
+from edge_parcial.csv_anexar import preparar_csv
 from edge_parcial.nucleo.modelo import Decision
+from edge_parcial.sesion import sesion_actual
 
 FUENTES = ("esp32", "droidcam", "local")
 COLUMNAS_EVENTOS = [
@@ -20,17 +22,11 @@ COLUMNAS_EVENTOS = [
     *[f"voto_{f}" for f in FUENTES],
     *[f"bandera_{f}" for f in FUENTES],
     "Q", "n_true", "alerta",
-    "marca", "evidencia_fuente", "evidencia_foto",
+    "marca", "evidencia_fuente", "evidencia_foto", "session_id",
 ]  # fmt: skip
-# Cabecera anterior (sin las tres columnas finales): se conserva el archivo viejo aparte.
-COLUMNAS_EVENTOS_V1 = COLUMNAS_EVENTOS[:-3]
 COMPONENTES_ESTADO = (
     "camara_esp32", "camara_droidcam", "camara_local", "ble", "servicio_rostros", "nucleo",
 )  # fmt: skip
-
-
-class ErrorEsquema(Exception):
-    """El eventos.csv existente tiene otra cabecera."""
 
 
 class EventosCSV:
@@ -40,19 +36,8 @@ class EventosCSV:
         self.ruta = Path(ruta)
         self.run_id = run_id
         self.ruta.parent.mkdir(parents=True, exist_ok=True)
-        nuevo = not self.ruta.exists() or self.ruta.stat().st_size == 0
-        if not nuevo:
-            with open(self.ruta, encoding="utf-8", newline="") as f:
-                cab = next(csv.reader(f), [])
-            if cab == COLUMNAS_EVENTOS_V1:
-                # Archivo con el esquema anterior: no se reescribe, se aparta y se empieza otro.
-                viejo = self.ruta.with_name(f"{self.ruta.stem}.v1-{datetime.now():%Y%m%d-%H%M%S}.csv")  # fmt: skip
-                self.ruta.rename(viejo)
-                nuevo = True
-            elif cab != COLUMNAS_EVENTOS:
-                raise ErrorEsquema(
-                    f"{self.ruta} tiene una cabecera distinta del contrato"
-                )
+        # Solo anexar: si la cabecera cambió, el archivo viejo se aparta sin perder nada.
+        nuevo = preparar_csv(self.ruta, COLUMNAS_EVENTOS)
         self._f = open(self.ruta, "a", encoding="utf-8", newline="")  # noqa: SIM115 - queda abierto
         self._w = csv.DictWriter(self._f, COLUMNAS_EVENTOS, lineterminator="\n")
         if nuevo:
@@ -68,7 +53,7 @@ class EventosCSV:
             "marca": marca, "evidencia_fuente": evidencia[0], "evidencia_foto": evidencia[1],
             "run_id": self.run_id, "ts_wall": d.ts_wall, "ventana": d.ventana,
             "t_ventana_ini_ns": d.t_ini_ns, "Q": d.q, "n_true": d.n_true,
-            "alerta": int(d.alerta),
+            "alerta": int(d.alerta), "session_id": sesion_actual(),
         }  # fmt: skip
         for f in FUENTES:
             v = d.votos.get(f)

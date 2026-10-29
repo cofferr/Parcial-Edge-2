@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from edge_parcial.config import RUTA_CONFIG, ErrorConfig, cargar_config
+from edge_parcial.csv_anexar import copia_con_fecha
 
 SECCIONES = ("esp32", "droidcam")
 
@@ -51,5 +52,6 @@ def guardar_ips(
             raise ErrorConfig(
                 f"No se encontró la clave 'ip' en la sección [{seccion}] de {ruta}"
             )
+    copia_con_fecha(ruta)  # nunca se pierde la configuración anterior
     ruta.write_text(texto, encoding="utf-8")
     return nuevas

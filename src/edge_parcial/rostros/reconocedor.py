@@ -77,6 +77,8 @@ class ReconocedorDlib:
         self.carpeta.mkdir(parents=True, exist_ok=True)
         encontrados = []
         for entrada in sorted(self.carpeta.iterdir()):
+            if entrada.name.startswith(("_", ".")):
+                continue  # _archivo: personas dadas de baja
             if entrada.is_dir():
                 encontrados += [
                     (entrada.name, a)

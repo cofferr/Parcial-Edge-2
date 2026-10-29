@@ -15,6 +15,7 @@ from typing import Protocol
 
 from edge_parcial.ble.telemetria import EscritorTelemetria
 from edge_parcial.ble.trama import TramaInvalida, decodificar
+from edge_parcial.csv_anexar import ruta_libre
 from edge_parcial.panel.estado import actualizar_componente, ahora_iso, entrada
 from edge_parcial.visor.cliente import obtener_ultimo
 
@@ -118,10 +119,13 @@ class Gateway:
         if jpeg is None:
             self._error(f"Sin fotograma reciente de {fuente} para la evidencia del PIR")
             return ""
-        nombre = f"pir_{fuente}_{ahora:%Y%m%d_%H%M%S}.jpg"
         try:
             self.params.carpeta_fotos.mkdir(parents=True, exist_ok=True)
-            (self.params.carpeta_fotos / nombre).write_bytes(jpeg)
+            destino = ruta_libre(
+                self.params.carpeta_fotos / f"pir_{fuente}_{ahora:%Y%m%d_%H%M%S}.jpg"
+            )
+            nombre = destino.name
+            destino.write_bytes(jpeg)
         except OSError as e:
             self._error(f"No se pudo guardar la evidencia: {e}")
             return ""

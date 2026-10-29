@@ -27,6 +27,9 @@ from edge_parcial.panel.datos import (
     rutas_por_defecto,
 )
 from edge_parcial.panel.orquestador import Orquestador, proceso_nucleo, procesos_demo
+from edge_parcial.panel.respaldo import respaldar
+from edge_parcial.rostros.reconocedor import CARPETA_ROSTROS
+from edge_parcial.sesion import nueva_sesion
 
 log = logging.getLogger("edge_parcial.panel")
 
@@ -96,6 +99,8 @@ class Arranque:
         self.dueno = False
         self.orq: Orquestador | None = None
         self.opciones = Opciones()
+        self.sesion = nueva_sesion()  # session_id de esta ejecución de la demo
+        self.respaldo: Path | None = None
         self._mutex = threading.Lock()
         atexit.register(self.detener)
 
@@ -130,6 +135,13 @@ class Arranque:
                 os.kill(pid, signal.SIGKILL)
         self._ruta_pids.unlink(missing_ok=True)
 
+    def _respaldar(self) -> None:
+        """Copia de seguridad previa al arranque (solo copia; un fallo no impide arrancar)."""
+        try:
+            self.respaldo = respaldar(self.base, CARPETA_ROSTROS)
+        except OSError as e:
+            log.warning("No se pudo hacer el respaldo: %s", e)
+
     # -- ciclo de vida ----------------------------------------------------------
 
     def _construir(self, o: Opciones) -> Orquestador:
@@ -160,6 +172,7 @@ class Arranque:
             self.dueno = True
             self.opciones = opciones or Opciones.de_entorno()
             self._matar_huerfanos()
+            self._respaldar()
             self.orq = self._construir(self.opciones)
             self.orq.lanzar()
             self._ruta_pids.write_text(

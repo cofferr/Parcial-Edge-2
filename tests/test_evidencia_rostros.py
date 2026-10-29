@@ -77,10 +77,10 @@ def test_lector_evidencia_lee_filas_nuevas_y_tolera_linea_a_medias(tmp_path):
 
 def test_eventos_csv_nuevo_esquema_y_migracion_del_viejo(tmp_path):
     ruta = tmp_path / "eventos.csv"
-    ruta.write_text(",".join(salidas.COLUMNAS_EVENTOS_V1) + "\nviejo\n")
+    ruta.write_text(",".join(salidas.COLUMNAS_EVENTOS[:-4]) + "\nviejo\n")
     salidas.EventosCSV(ruta, "r").cerrar()
     assert ruta.read_text().splitlines()[0].split(",") == salidas.COLUMNAS_EVENTOS
-    aparte = [p for p in tmp_path.iterdir() if ".v1-" in p.name]
+    aparte = [p for p in tmp_path.iterdir() if ".antes-" in p.name]
     assert (
         len(aparte) == 1 and "viejo" in aparte[0].read_text()
     )  # el archivo viejo se conserva
