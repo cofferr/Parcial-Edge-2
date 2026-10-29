@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from edge_parcial.config import RAIZ
-from edge_parcial.panel.datos import VARIABLE_ENTORNO
+from edge_parcial.panel.datos import VARIABLE_ENTORNO, VARIABLE_ORQUESTADO
 
 log = logging.getLogger("edge_parcial.demo")
 
@@ -29,38 +29,49 @@ def _py(*args: str) -> list[str]:
     return [sys.executable, *args]
 
 
+def proceso_nucleo(data_dir: Path | None = None) -> Proceso:
+    """Núcleo con las tres cámaras (sin ventanas de OpenCV). Las rutas salen de la config."""
+    env = {VARIABLE_ENTORNO: str(data_dir)} if data_dir else {}
+    return Proceso("nucleo", _py(str(RAIZ / "scripts" / "t2_nucleo.py")), env)
+
+
 def procesos_demo(
     data_dir: Path | None = None,
     puerto_panel: int = PUERTO_PANEL,
     ble: bool = True,
     rostros: bool = True,
     simular: bool = False,
+    panel: bool = True,
     ganchos: Sequence[Callable[[], Proceso | None]] = (),
 ) -> list[Proceso]:
     """Comandos de la demo. Los ganchos permiten añadir componentes (el núcleo)."""
     env = {VARIABLE_ENTORNO: str(data_dir)} if data_dir else {}
+    # El panel lanzado por la demo no debe lanzar de nuevo los componentes.
+    env_panel = {**env, VARIABLE_ORQUESTADO: "1"}
     base = ["--data-dir", str(data_dir)] if data_dir else []
     estado = ["--estado", str(data_dir / "estado.json")] if data_dir else []
-    lista = [
-        Proceso(
-            "panel",
-            _py(
-                "-m",
-                "streamlit",
-                "run",
-                str(RAIZ / "app" / "main.py"),
-                "--server.address",
-                "127.0.0.1",
-                "--server.port",
-                str(puerto_panel),
-                "--server.headless",
-                "true",
-                "--browser.gatherUsageStats",
-                "false",
-            ),
-            env,
+    lista = []
+    if panel:
+        lista.append(
+            Proceso(
+                "panel",
+                _py(
+                    "-m",
+                    "streamlit",
+                    "run",
+                    str(RAIZ / "app" / "main.py"),
+                    "--server.address",
+                    "127.0.0.1",
+                    "--server.port",
+                    str(puerto_panel),
+                    "--server.headless",
+                    "true",
+                    "--browser.gatherUsageStats",
+                    "false",
+                ),
+                env_panel,
+            )
         )
-    ]
     if rostros:
         lista.append(
             Proceso("rostros", _py("-m", "edge_parcial.rostros", *estado), env)

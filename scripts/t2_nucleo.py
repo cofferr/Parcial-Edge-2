@@ -21,6 +21,7 @@ from edge_parcial.nucleo.config_p2 import cargar_config_p2
 from edge_parcial.nucleo.fuentes import construir_entradas
 from edge_parcial.nucleo.nucleo import Nucleo
 from edge_parcial.nucleo.ventanas import ejecutar_ventanas
+from edge_parcial.panel.datos import SUBCARPETA_VIVO
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -53,6 +54,7 @@ def main(argv: list[str] | None = None) -> int:
         cfg.eventos_csv,
         cfg.estado_json,
         capas=capas,
+        carpeta_visor=cfg.base.snapshots_dir / SUBCARPETA_VIVO,
     )
     parar = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: parar.set())

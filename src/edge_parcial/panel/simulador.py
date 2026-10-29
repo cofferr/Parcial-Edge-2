@@ -5,6 +5,7 @@ reconocimientos.csv, snapshots/ y estado.json. Los snapshots son imágenes sint�
 (sin rostros reales). Nada aquí usa hardware.
 """
 
+import os
 import random
 import time
 from datetime import datetime
@@ -138,6 +139,7 @@ class Simulador:
                 "alerta": alerta,
             }
         )
+        self.publicar_vivo(ahora)
         self.publicar_estado(ahora)
         return {
             "ventana": self.ventana,
@@ -145,6 +147,15 @@ class Simulador:
             "alerta": alerta,
             "foto": foto,
         }
+
+    def publicar_vivo(self, ahora: datetime) -> None:
+        """Un fotograma sintético por fuente para el visor (escritura atómica)."""
+        self.rutas.vivo.mkdir(parents=True, exist_ok=True)
+        for f in FUENTES:
+            destino = self.rutas.vivo / f"{f}.jpg"
+            tmp = destino.with_name(f".{f}.tmp")
+            tmp.write_bytes(imagen_sintetica(f, "", ahora))
+            os.replace(tmp, destino)
 
     def publicar_estado(self, ahora: datetime) -> None:
         marca = ahora.isoformat(timespec="milliseconds")

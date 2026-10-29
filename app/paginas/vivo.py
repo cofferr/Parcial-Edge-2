@@ -2,6 +2,7 @@
 
 import streamlit as st
 
+from edge_parcial.ble.gateway import ParamsBle
 from edge_parcial.panel.consultas import (
     estado_componentes,
     evidencias,
@@ -21,6 +22,8 @@ def _estado(rutas) -> None:
         with col:
             simbolo = {"vivo": "●", "sin señal": "○", "sin datos": "·"}[v.estado]
             st.markdown(f"**{v.nombre}**  \n{simbolo} {v.estado}")
+            if v.nombre == "ble":
+                st.caption(f"estación: {ParamsBle().nombre}")
             if v.fps is not None:
                 st.caption(f"{v.fps} fps")
             st.caption(f"última: {v.ultima_marca}")

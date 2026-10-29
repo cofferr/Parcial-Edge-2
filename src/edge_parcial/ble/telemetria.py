@@ -30,8 +30,10 @@ class EscritorTelemetria:
             csv.writer(f).writerow(fila)
             f.flush()
 
-    def agregar(self, ts: datetime, lectura: Lectura, trama: bytes) -> None:
-        """La columna foto queda vacía: la evidencia la pone el núcleo al integrar."""
+    def agregar(
+        self, ts: datetime, lectura: Lectura, trama: bytes, foto: str = ""
+    ) -> None:
+        """`foto`: nombre del JPEG de evidencia (vacío si no hubo movimiento o falló)."""
         self._escribir(
             [
                 ts.isoformat(timespec="seconds"),
@@ -39,7 +41,7 @@ class EscritorTelemetria:
                 f"{lectura.humedad_pct:.2f}",
                 "" if lectura.suelo_adc is None else lectura.suelo_adc,
                 lectura.movimiento,
-                "",
+                foto,
                 trama.hex(" "),
             ]
         )

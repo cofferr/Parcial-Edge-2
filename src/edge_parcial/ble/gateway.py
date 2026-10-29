@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
+from edge_parcial.ble.foto import guardar_foto
 from edge_parcial.ble.telemetria import EscritorTelemetria
 from edge_parcial.ble.trama import TramaInvalida, decodificar
 from edge_parcial.panel.estado import actualizar_componente, ahora_iso, entrada
@@ -29,6 +30,9 @@ class ParamsBle:
     backoff_inicial_s: float = 1.0
     backoff_max_s: float = 30.0
     latido_s: float = 1.0
+    # Cámara a la que se pide la foto cuando hay movimiento; vacío = sin foto.
+    url_foto: str = ""
+    carpeta_fotos: Path = Path("data/snapshots")
 
 
 class FuenteBle(Protocol):
@@ -98,9 +102,23 @@ class Gateway:
             self._error(f"{e}: {datos.hex(' ')}")
             return
         ahora = self._reloj()
-        self.escritor.agregar(ahora, lectura, datos)
+        foto = ""
+        if lectura.movimiento == 1 and self.params.url_foto:
+            foto = f"foto_{ahora.strftime('%Y%m%d_%H%M%S')}.jpg"
+            self._pedir_foto(foto)
+        self.escritor.agregar(ahora, lectura, datos, foto)
         self.lecturas += 1
         self.ultima_marca = ahora.isoformat(timespec="milliseconds")
+
+    def _pedir_foto(self, nombre: str) -> None:
+        # En otro hilo: la petición HTTP no debe frenar la recepción de tramas BLE.
+        def tarea() -> None:
+            try:
+                guardar_foto(self.params.url_foto, self.params.carpeta_fotos / nombre)
+            except Exception as e:  # noqa: BLE001 - la foto es accesoria
+                self._error(f"No se pudo guardar la foto: {e}")
+
+        asyncio.get_running_loop().run_in_executor(None, tarea)
 
     def _al_conectar(self) -> None:
         self.conectado = True

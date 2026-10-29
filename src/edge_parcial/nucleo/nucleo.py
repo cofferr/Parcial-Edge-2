@@ -22,10 +22,11 @@ from edge_parcial.nucleo.salidas import (
     EventosCSV,
     ahora_iso,
     entrada_estado,
-    escribir_atomico,
     estado_completo,
     linea_log,
 )
+from edge_parcial.nucleo.visor import EscritorVisor
+from edge_parcial.panel.estado import fusionar_estado
 
 _FRESCURA_NS = 3_000_000_000  # una cámara sin fotogramas durante 3 s no está viva
 
@@ -47,6 +48,7 @@ class Nucleo:
         consola=print,
         reloj=perf_counter_ns,
         latido_s: float = 1.0,
+        carpeta_visor: Path | str | None = None,
     ) -> None:
         if len(entradas) != cfg.n_quorum or not set(entradas) <= set(FUENTES):
             raise ErrorNucleo(
@@ -72,6 +74,14 @@ class Nucleo:
         self._parar = threading.Event()
         self._hilo_latido: threading.Thread | None = None
         self._iniciado = False
+        self.visor = (
+            EscritorVisor(
+                carpeta_visor,
+                lambda: {f: t.ultima_imagen for f, t in self.trabajadores.items()},
+            )
+            if carpeta_visor
+            else None
+        )
 
     # -- ciclo de vida ------------------------------------------------------
 
@@ -101,8 +111,12 @@ class Nucleo:
         for f in self.fuentes:
             self.entradas[f].iniciar(self.trabajadores[f].encolar)
         self._iniciado = True
+        if self.visor is not None:
+            self.visor.iniciar()
 
     def detener(self) -> None:
+        if self.visor is not None:
+            self.visor.detener()
         for e in self.entradas.values():
             e.detener()
         for t in self.trabajadores.values():
@@ -178,7 +192,15 @@ class Nucleo:
         if self.ruta_estado is None:
             return
         try:
-            escribir_atomico(self.ruta_estado, self.snapshot_estado())
+            # `ble` y `servicio_rostros` son de otros procesos: solo se marcan como no
+            # reportados si todavía no existen, nunca se pisa su latido.
+            completo = self.snapshot_estado()
+            ajenos = ("ble", "servicio_rostros")
+            fusionar_estado(
+                self.ruta_estado,
+                {k: v for k, v in completo.items() if k not in ajenos},
+                {k: completo[k] for k in ajenos},
+            )
         except OSError as e:
             self._errores.append(f"estado.json: {e}")
 

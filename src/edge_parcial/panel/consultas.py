@@ -1,5 +1,6 @@
 """Consultas de solo lectura que alimentan el panel (sin Streamlit, fáciles de probar)."""
 
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +20,7 @@ class ComponenteVista:
     fps: float | None
     ultima_marca: str
     errores: list[str]
+    edad_s: float | None = None  # antigüedad del último latido
 
 
 def _edad_s(marca: str | None, ahora: datetime) -> float | None:
@@ -51,6 +53,7 @@ def estado_componentes(
                 e.get("fps"),
                 e.get("ultima_marca") or "—",
                 list(e.get("errores_recientes") or []),
+                edad,
             )
         )
     return vistas
@@ -137,3 +140,56 @@ def figuras_disponibles(rutas: Rutas) -> dict[str, list[Path]]:
     for p in pngs:
         grupos.setdefault(parte_de(p.name), []).append(p)
     return dict(sorted(grupos.items()))
+
+
+FRESCURA_VIVO_S = 3.0  # un fotograma más viejo que esto cuenta como «sin señal»
+# Banderas de eventos.csv -> estado mostrado (el simulador escribe 1/0).
+_ESTADO_DE_BANDERA = {
+    "movimiento": "movimiento",
+    "1": "movimiento",
+    "quieto": "quieto",
+    "0": "quieto",
+    "cambio_global": "quieto",
+    "tapada": "tapada",
+    "sin_datos": "sin_datos",
+    "caida": "sin_datos",
+}
+
+
+def fotograma_vivo(
+    rutas: Rutas, fuente: str, max_edad_s: float = FRESCURA_VIVO_S
+) -> bytes | None:
+    """Último JPEG de la fuente, o None si falta, es viejo o se está leyendo a medias."""
+    ruta = rutas.vivo / f"{fuente}.jpg"
+    try:
+        if time.time() - ruta.stat().st_mtime > max_edad_s:
+            return None
+        datos = ruta.read_bytes()
+    except OSError:
+        return None
+    return datos if datos.startswith(b"\xff\xd8") else None
+
+
+@dataclass(frozen=True)
+class EstadoFuente:
+    voto: bool | None
+    estado: str  # movimiento, quieto, tapada o sin_datos
+
+
+def estado_por_fuente(rutas: Rutas) -> tuple[dict[str, EstadoFuente], bool | None]:
+    """Voto y estado de cada fuente y bandera de alerta, de la última ventana de eventos.csv."""
+    df = leer_csv(rutas.eventos, ultimas=1)
+    vacio = {f: EstadoFuente(None, "sin_datos") for f in FUENTES}
+    if df.empty or any(f"bandera_{f}" not in df.columns for f in FUENTES):
+        return vacio, None
+    fila = df.iloc[-1]
+    resultado = {}
+    for f in FUENTES:
+        voto = str(fila.get(f"voto_{f}", "")).strip()
+        bandera = str(fila[f"bandera_{f}"]).strip()
+        resultado[f] = EstadoFuente(
+            None if voto == "" else voto in ("1", "True", "true"),
+            _ESTADO_DE_BANDERA.get(bandera, "sin_datos"),
+        )
+    alerta = str(fila.get("alerta", "")).strip()
+    return resultado, None if alerta == "" else alerta in ("1", "True", "true")

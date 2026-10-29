@@ -37,6 +37,9 @@ COLUMNAS_RECONOCIMIENTOS = [
 ]
 FUENTES = ("esp32", "droidcam", "local")
 VARIABLE_ENTORNO = "EDGE_DATA_DIR"
+# "1" = otro proceso (la demo) ya lanza los componentes; el panel no los lanza.
+VARIABLE_ORQUESTADO = "EDGE_ORQUESTADO"
+SUBCARPETA_VIVO = "vivo"  # últimos fotogramas de cada fuente, dentro de snapshots/
 
 
 @dataclass(frozen=True)
@@ -55,6 +58,10 @@ class Rutas:
     @property
     def reconocimientos(self) -> Path:
         return self.base / "reconocimientos.csv"
+
+    @property
+    def vivo(self) -> Path:
+        return self.snapshots / SUBCARPETA_VIVO
 
     @property
     def estado(self) -> Path:

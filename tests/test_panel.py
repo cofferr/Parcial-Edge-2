@@ -22,6 +22,7 @@ APP = str(Path(__file__).resolve().parent.parent / "app" / "main.py")
 @pytest.fixture
 def datos(tmp_path, monkeypatch):
     monkeypatch.setenv("EDGE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("EDGE_ORQUESTADO", "1")  # los tests no lanzan procesos
     return Rutas(base=tmp_path, snapshots=tmp_path / "snapshots")
 
 

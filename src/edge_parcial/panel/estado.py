@@ -78,3 +78,24 @@ def actualizar_componente(ruta: Path | str, nombre: str, datos: dict) -> None:
         actual = leer_estado(ruta)
         actual[nombre] = datos
         _escribir_atomico(ruta, actual)
+
+
+def fusionar_estado(
+    ruta: Path | str,
+    nuevos: dict[str, dict],
+    si_ausentes: dict[str, dict] | None = None,
+) -> None:
+    """Fusiona varias entradas bajo el mismo candado que `actualizar_componente`.
+
+    `si_ausentes` solo se escribe para las claves que aún no existen (marcadores de
+    componentes ajenos que no deben pisar su latido real).
+    """
+    ruta = Path(ruta)
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    with open(ruta.with_name(ruta.name + ".lock"), "w") as candado:
+        fcntl.flock(candado, fcntl.LOCK_EX)
+        actual = leer_estado(ruta)
+        for k, v in (si_ausentes or {}).items():
+            actual.setdefault(k, v)
+        actual.update(nuevos)
+        _escribir_atomico(ruta, actual)
