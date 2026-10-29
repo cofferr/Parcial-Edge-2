@@ -55,7 +55,10 @@ def test_vivo_con_datos_simulados(datos):
     for _ in range(30):
         sim.paso()
     at = _correr()
-    assert not at.info  # ningún estado vacío
+    # ningún estado vacío (el simulador no genera capturas del PIR)
+    assert [
+        i.value for i in at.info if not i.value.startswith("Sin capturas del PIR")
+    ] == []
     assert {m.label for m in at.metric} == {"Temperatura", "Humedad", "PIR"}
     assert "camara_esp32" in _textos(at)
     assert any(
@@ -126,3 +129,25 @@ def test_parte_de():
         "Parte 3",
         "Otras",
     ]
+
+
+def test_capturas_del_pir_aparecen_en_vivo(datos):
+    from edge_parcial.panel.consultas import capturas_pir
+
+    datos.snapshots.mkdir(parents=True, exist_ok=True)
+    import cv2
+    import numpy as np
+
+    ok, buf = cv2.imencode(".jpg", np.full((20, 20, 3), 90, np.uint8))
+    (datos.snapshots / "pir_esp32_20261028_201223.jpg").write_bytes(buf.tobytes())
+    (datos.base / "telemetria.csv").write_text(
+        "timestamp,temperatura_c,humedad_pct,suelo_adc,movimiento,foto,trama_hex,session_id\n"
+        "2026-10-28T20:12:23-05:00,24,60,,1,pir_esp32_20261028_201223.jpg,aa,S\n"
+        "2026-10-28T20:12:28-05:00,24,60,,1,pir_esp32_20261028_201228.jpg,bb,S\n"  # sin archivo
+        "2026-10-28T20:12:33-05:00,24,60,,0,,cc,S\n"
+    )
+    [c] = capturas_pir(datos)
+    assert c.fuente == "esp32" and c.ts.startswith("2026-10-28T20:12:23")
+    at = _correr()
+    assert any(s.value == "Capturas del PIR" for s in at.subheader)
+    assert any("PIR · esp32" in c.value for c in at.caption)

@@ -4,6 +4,7 @@ import streamlit as st
 
 from edge_parcial.ble.gateway import ParamsBle
 from edge_parcial.panel.consultas import (
+    capturas_pir,
     estado_componentes,
     evidencias,
     telemetria_reciente,
@@ -91,12 +92,26 @@ def _galeria(rutas) -> None:
             st.caption(f"**{ev.identidad}**{dist} · {ev.fuente} · {ev.ts_wall}")
 
 
+def _capturas_pir(rutas) -> None:
+    st.subheader("Capturas del PIR")
+    items = capturas_pir(rutas)
+    if not items:
+        st.info("Sin capturas del PIR: ningún movimiento del sensor con foto todavía.")
+        return
+    columnas = st.columns(4)
+    for i, c in enumerate(items):
+        with columnas[i % 4]:
+            st.image(str(c.ruta), width="stretch")
+            st.caption(f"PIR · {c.fuente} · {c.ts}")
+
+
 @st.fragment(run_every=REFRESCO_S)
 def _contenido() -> None:
     rutas = rutas_por_defecto()
     _estado(rutas)
     _telemetria(rutas)
     _ventanas(rutas)
+    _capturas_pir(rutas)
     _galeria(rutas)
 
 

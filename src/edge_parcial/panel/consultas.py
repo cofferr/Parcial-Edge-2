@@ -120,6 +120,30 @@ def evidencias(rutas: Rutas, n: int = 12) -> list[Evidencia]:
     return salida
 
 
+@dataclass(frozen=True)
+class CapturaPir:
+    ruta: Path
+    fuente: str
+    ts: str
+
+
+def capturas_pir(rutas: Rutas, n: int = 12) -> list[CapturaPir]:
+    """Últimas fotos de evidencia del PIR (columna `foto` de telemetria.csv) cuyo JPEG existe."""
+    df = leer_csv(rutas.telemetria, ultimas=n * 5)
+    if df.empty or not {"foto", "movimiento", "timestamp"} <= set(df.columns):
+        return []
+    salida = []
+    for fila in df.iloc[::-1].itertuples():
+        nombre = Path(str(fila.foto)).name  # solo el nombre: sin rutas relativas
+        ruta = rutas.snapshots / nombre
+        if fila.movimiento == "1" and nombre.startswith("pir_") and ruta.is_file():
+            fuente = nombre.split("_")[1] if nombre.count("_") >= 2 else "—"
+            salida.append(CapturaPir(ruta, fuente, fila.timestamp))
+        if len(salida) == n:
+            break
+    return salida
+
+
 def parte_de(nombre: str) -> str:
     """Parte del parcial según el prefijo del archivo (t1_, reto1_ → 1; t2_ → 2; ...)."""
     n = nombre.lower()
