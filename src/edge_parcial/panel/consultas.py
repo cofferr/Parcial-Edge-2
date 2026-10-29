@@ -177,3 +177,42 @@ def estado_por_fuente(rutas: Rutas) -> tuple[dict[str, EstadoFuente], bool | Non
         )
     alerta = str(fila.get("alerta", "")).strip()
     return resultado, None if alerta == "" else alerta in ("1", "True", "true")
+
+
+# -- página «Datos» (solo lectura; leer_csv ya ignora una última línea a medias) ----------
+
+
+def filtrar_eventos(
+    df: pd.DataFrame,
+    fuente: str = "todas",
+    solo_alertas: bool = False,
+    marca: str = "todas",
+) -> pd.DataFrame:
+    """`fuente`: solo ventanas donde esa fuente votó 1. `marca`: valor de la columna marca."""
+    if df.empty:
+        return df
+    if solo_alertas and "alerta" in df.columns:
+        df = df[df["alerta"].astype(str).isin(["1", "True", "true"])]
+    if fuente != "todas" and f"voto_{fuente}" in df.columns:
+        df = df[df[f"voto_{fuente}"].astype(str).isin(["1", "True", "true"])]
+    if marca != "todas" and "marca" in df.columns:
+        df = df[df["marca"].fillna("") == ("" if marca == "(sin marca)" else marca)]
+    return df
+
+
+def filtrar_reconocimientos(
+    df: pd.DataFrame, fuente: str = "todas", identidad: str = "todas"
+) -> pd.DataFrame:
+    if df.empty:
+        return df
+    if fuente != "todas" and "fuente" in df.columns:
+        df = df[df["fuente"] == fuente]
+    if identidad != "todas" and "identidad" in df.columns:
+        df = df[df["identidad"] == identidad]
+    return df
+
+
+def valores_distintos(df: pd.DataFrame, columna: str) -> list[str]:
+    if df.empty or columna not in df.columns:
+        return []
+    return sorted({str(v) for v in df[columna].fillna("")} - {""})
