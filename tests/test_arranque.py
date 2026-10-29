@@ -4,17 +4,14 @@ import json
 import os
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
-import numpy as np
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from edge_parcial.nucleo.visor import EscritorVisor
 from edge_parcial.panel import arranque
 from edge_parcial.panel.arranque import Arranque, Opciones
-from edge_parcial.panel.consultas import estado_por_fuente, fotograma_vivo
+from edge_parcial.panel.consultas import estado_por_fuente
 from edge_parcial.panel.datos import Rutas
 from edge_parcial.panel.orquestador import Orquestador, Proceso
 from edge_parcial.panel.simulador import Simulador
@@ -102,22 +99,6 @@ def rutas(tmp_path, monkeypatch):
     return Rutas(base=tmp_path, snapshots=tmp_path / "snapshots")
 
 
-def test_visor_escribe_atomico_y_el_panel_lo_lee(rutas):
-    img = np.full((480, 1280, 3), 90, np.uint8)
-    EscritorVisor(rutas.vivo, lambda: {"esp32": img, "local": None}).escribir_una_vez()
-    assert fotograma_vivo(rutas, "esp32")[:2] == b"\xff\xd8"
-    assert fotograma_vivo(rutas, "local") is None  # sin fotograma: sin señal
-    assert [p.name for p in rutas.vivo.iterdir()] == ["esp32.jpg"]  # sin temporales
-
-
-def test_fotograma_viejo_es_sin_senal(rutas):
-    Simulador(rutas, semilla=1).publicar_vivo(datetime.now())
-    assert fotograma_vivo(rutas, "droidcam") is not None
-    viejo = time.time() - 60
-    os.utime(rutas.vivo / "droidcam.jpg", (viejo, viejo))
-    assert fotograma_vivo(rutas, "droidcam") is None
-
-
 def test_estado_por_fuente_traduce_banderas(rutas):
     (rutas.base / "eventos.csv").write_text(
         "run_id,ts_wall,ventana,t_ventana_ini_ns,voto_esp32,voto_droidcam,voto_local,"
@@ -142,12 +123,23 @@ def test_camaras_con_simulacion_muestra_las_tres(rutas):
     assert not at.exception, at.exception
 
 
-def test_camaras_sin_fotogramas_dice_sin_senal(rutas):
+def test_camaras_incrusta_los_tres_streams(rutas):
     at = AppTest.from_file(
         str(Path(APP).parent / "paginas" / "camaras.py"), default_timeout=30
     ).run()
     assert not at.exception, at.exception
-    assert [i.value for i in at.info].count("sin señal") == 3
+    html = " ".join(str(e.value) for e in at.get("html"))
+    for f in ("esp32", "droidcam", "local"):
+        assert f"http://127.0.0.1:8766/stream/{f}" in html
+
+
+def test_camaras_una_sola(rutas):
+    at = AppTest.from_file(
+        str(Path(APP).parent / "paginas" / "camaras.py"), default_timeout=30
+    ).run()
+    at.radio[0].set_value("Una cámara").run()
+    html = " ".join(str(e.value) for e in at.get("html"))
+    assert html.count("/stream/") == 1
 
 
 def test_barra_marca_seis_componentes_con_semaforo(rutas):

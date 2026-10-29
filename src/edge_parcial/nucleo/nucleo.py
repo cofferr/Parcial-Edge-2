@@ -25,7 +25,6 @@ from edge_parcial.nucleo.salidas import (
     estado_completo,
     linea_log,
 )
-from edge_parcial.nucleo.visor import EscritorVisor
 from edge_parcial.panel.estado import fusionar_estado
 
 _FRESCURA_NS = 3_000_000_000  # una cámara sin fotogramas durante 3 s no está viva
@@ -48,7 +47,7 @@ class Nucleo:
         consola=print,
         reloj=perf_counter_ns,
         latido_s: float = 1.0,
-        carpeta_visor: Path | str | None = None,
+        publicador=None,
     ) -> None:
         if len(entradas) != cfg.n_quorum or not set(entradas) <= set(FUENTES):
             raise ErrorNucleo(
@@ -74,14 +73,7 @@ class Nucleo:
         self._parar = threading.Event()
         self._hilo_latido: threading.Thread | None = None
         self._iniciado = False
-        self.visor = (
-            EscritorVisor(
-                carpeta_visor,
-                lambda: {f: t.ultima_imagen for f, t in self.trabajadores.items()},
-            )
-            if carpeta_visor
-            else None
-        )
+        self.publicador = publicador
 
     # -- ciclo de vida ------------------------------------------------------
 
@@ -111,12 +103,18 @@ class Nucleo:
         for f in self.fuentes:
             self.entradas[f].iniciar(self.trabajadores[f].encolar)
         self._iniciado = True
-        if self.visor is not None:
-            self.visor.iniciar()
+        if self.publicador is not None:
+            self.publicador.iniciar()
+            if "local" in self.trabajadores:
+                # La local es la única que se codifica (una vez, calidad ~70).
+                local = self.trabajadores["local"]
+                self.publicador.codificar_periodico(
+                    "local", lambda: local.ultima_imagen
+                )
 
     def detener(self) -> None:
-        if self.visor is not None:
-            self.visor.detener()
+        if self.publicador is not None:
+            self.publicador.detener()
         for e in self.entradas.values():
             e.detener()
         for t in self.trabajadores.values():

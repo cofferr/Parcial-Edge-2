@@ -44,15 +44,21 @@ def fotograma_desde_fila(fila: dict, img: np.ndarray) -> FotogramaEdge:
 class DecodificadorEdge(Decodificador):
     """`imdecode` en su propio hilo (como en la Parte 1) y entrega la imagen al edge."""
 
-    def __init__(self, cola: queue.Queue, sink_frame, nombre: str) -> None:
+    def __init__(
+        self, cola: queue.Queue, sink_frame, nombre: str, publicar=None
+    ) -> None:
         super().__init__(cola, lambda fila: None, nombre)
         self.sink_frame = sink_frame
+        # Reenvío del payload JPEG tal cual (sin re-codificar) hacia el visor.
+        self.publicar = publicar
 
     def _procesar(self, item) -> None:
         fila = item.fila
         if not item.decodificar:
             self.fallidos += 1
             return
+        if self.publicar is not None:
+            self.publicar(bytes(item.payload))
         datos = np.frombuffer(item.payload, dtype=np.uint8)
         t_ini = perf_counter_ns()
         img = cv2.imdecode(datos, self.flags)
@@ -82,8 +88,11 @@ class _Errores:
 class EntradaRed:
     """ESP32-CAM (/stream) o DroidCam (/video): LectorStream + decodificador."""
 
-    def __init__(self, cfg: Config, nombre: str, run_id: str = "nucleo") -> None:
+    def __init__(
+        self, cfg: Config, nombre: str, run_id: str = "nucleo", publicador=None
+    ) -> None:
         self.nombre = nombre
+        self.publicador = publicador
         self.cfg = cfg
         self.run_id = run_id
         self._errores = _Errores()
@@ -96,7 +105,14 @@ class EntradaRed:
     def iniciar(self, sink) -> None:
         spec = spec_esp32_stream(self.cfg) if self.nombre == "esp32" else spec_droidcam(self.cfg)  # fmt: skip
         cola = queue.Queue(maxsize=self.cfg.lector.cola_max)
-        self._dec = DecodificadorEdge(cola, sink, f"decodificador-{self.nombre}")
+        publicar = (
+            (lambda jpeg: self.publicador.publicar_jpeg(self.nombre, jpeg))
+            if self.publicador is not None
+            else None
+        )
+        self._dec = DecodificadorEdge(
+            cola, sink, f"decodificador-{self.nombre}", publicar
+        )
         self._lector = LectorStream(
             spec, self.cfg.lector, self.run_id, "nucleo", None, cola,
             lambda fila: None, self._errores.evento,
@@ -251,10 +267,17 @@ class EntradaSimulada:
 
 
 def construir_entradas(
-    cfg: Config, fuentes=("esp32", "droidcam", "local"), camara_factory=crear_camara
+    cfg: Config,
+    fuentes=("esp32", "droidcam", "local"),
+    camara_factory=crear_camara,
+    publicador=None,
 ) -> dict:
     """Las entradas reales por nombre. La local debe abrirse en el hilo principal."""
     return {
-        f: (EntradaLocal(cfg, camara_factory) if f == "local" else EntradaRed(cfg, f))
+        f: (
+            EntradaLocal(cfg, camara_factory)
+            if f == "local"
+            else EntradaRed(cfg, f, publicador=publicador)
+        )
         for f in fuentes
     }

@@ -21,7 +21,7 @@ from edge_parcial.nucleo.config_p2 import cargar_config_p2
 from edge_parcial.nucleo.fuentes import construir_entradas
 from edge_parcial.nucleo.nucleo import Nucleo
 from edge_parcial.nucleo.ventanas import ejecutar_ventanas
-from edge_parcial.panel.datos import SUBCARPETA_VIVO
+from edge_parcial.visor.cliente import PublicadorVisor
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -29,6 +29,7 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     ap.add_argument("--ventanas", action="store_true")
+    ap.add_argument("--sin-visor", action="store_true", help="no publica al visor")
     ap.add_argument("--config", type=Path, default=RUTA_CONFIG)
     ap.add_argument(
         "--duracion-s", type=float, default=None, help="termina tras este tiempo"
@@ -47,14 +48,16 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     run_id = f"{datetime.now():%Y%m%d-%H%M%S}-nucleo"
     capas = RegistroCapas(args.capas) if args.capas else None
+    # El visor MJPEG es accesorio: si no está, el núcleo sigue (los envíos fallan en silencio).
+    publicador = None if args.sin_visor else PublicadorVisor()
     nucleo = Nucleo(
         cfg,
-        construir_entradas(cfg.base),
+        construir_entradas(cfg.base, publicador=publicador),
         run_id,
         cfg.eventos_csv,
         cfg.estado_json,
         capas=capas,
-        carpeta_visor=cfg.base.snapshots_dir / SUBCARPETA_VIVO,
+        publicador=publicador,
     )
     parar = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: parar.set())

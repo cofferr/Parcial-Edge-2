@@ -1,6 +1,5 @@
 """Consultas de solo lectura que alimentan el panel (sin Streamlit, fáciles de probar)."""
 
-import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -142,7 +141,6 @@ def figuras_disponibles(rutas: Rutas) -> dict[str, list[Path]]:
     return dict(sorted(grupos.items()))
 
 
-FRESCURA_VIVO_S = 3.0  # un fotograma más viejo que esto cuenta como «sin señal»
 # Banderas de eventos.csv -> estado mostrado (el simulador escribe 1/0).
 _ESTADO_DE_BANDERA = {
     "movimiento": "movimiento",
@@ -154,20 +152,6 @@ _ESTADO_DE_BANDERA = {
     "sin_datos": "sin_datos",
     "caida": "sin_datos",
 }
-
-
-def fotograma_vivo(
-    rutas: Rutas, fuente: str, max_edad_s: float = FRESCURA_VIVO_S
-) -> bytes | None:
-    """Último JPEG de la fuente, o None si falta, es viejo o se está leyendo a medias."""
-    ruta = rutas.vivo / f"{fuente}.jpg"
-    try:
-        if time.time() - ruta.stat().st_mtime > max_edad_s:
-            return None
-        datos = ruta.read_bytes()
-    except OSError:
-        return None
-    return datos if datos.startswith(b"\xff\xd8") else None
 
 
 @dataclass(frozen=True)

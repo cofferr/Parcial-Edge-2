@@ -42,6 +42,7 @@ def procesos_demo(
     rostros: bool = True,
     simular: bool = False,
     panel: bool = True,
+    visor: bool = True,
     ganchos: Sequence[Callable[[], Proceso | None]] = (),
 ) -> list[Proceso]:
     """Comandos de la demo. Los ganchos permiten añadir componentes (el núcleo)."""
@@ -72,6 +73,9 @@ def procesos_demo(
                 env_panel,
             )
         )
+    if visor:
+        # Primero: el núcleo y el simulador le publican fotogramas desde el arranque.
+        lista.append(Proceso("visor", _py("-m", "edge_parcial.visor"), env))
     if rostros:
         lista.append(
             Proceso("rostros", _py("-m", "edge_parcial.rostros", *estado), env)

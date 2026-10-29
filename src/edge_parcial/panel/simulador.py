@@ -5,7 +5,6 @@ reconocimientos.csv, snapshots/ y estado.json. Los snapshots son imágenes sint�
 (sin rostros reales). Nada aquí usa hardware.
 """
 
-import os
 import random
 import time
 from datetime import datetime
@@ -22,6 +21,7 @@ from edge_parcial.panel.datos import (
     Rutas,
 )
 from edge_parcial.panel.estado import COMPONENTES, entrada, escribir_estado
+from edge_parcial.visor.cliente import publicar_una_vez
 
 IDENTIDADES = ("Ana", "Luis", "desconocido")
 CICLO_MOVIMIENTO_S = (
@@ -149,13 +149,9 @@ class Simulador:
         }
 
     def publicar_vivo(self, ahora: datetime) -> None:
-        """Un fotograma sintético por fuente para el visor (escritura atómica)."""
-        self.rutas.vivo.mkdir(parents=True, exist_ok=True)
+        """Un fotograma sintético por fuente hacia el visor (si no está, se ignora)."""
         for f in FUENTES:
-            destino = self.rutas.vivo / f"{f}.jpg"
-            tmp = destino.with_name(f".{f}.tmp")
-            tmp.write_bytes(imagen_sintetica(f, "", ahora))
-            os.replace(tmp, destino)
+            publicar_una_vez(f, imagen_sintetica(f, "", ahora))
 
     def publicar_estado(self, ahora: datetime) -> None:
         marca = ahora.isoformat(timespec="milliseconds")

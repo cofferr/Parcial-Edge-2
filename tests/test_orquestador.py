@@ -15,7 +15,7 @@ TERCO = [
 
 def test_comandos_demo_solo_loopback_y_sin_estadisticas(tmp_path):
     procs = {p.nombre: p for p in procesos_demo(tmp_path)}
-    assert set(procs) == {"panel", "rostros", "ble"}
+    assert set(procs) == {"panel", "visor", "rostros", "ble"}
     panel = list(procs["panel"].comando)
     assert panel[panel.index("--server.address") + 1] == "127.0.0.1"
     assert panel[panel.index("--browser.gatherUsageStats") + 1] == "false"
@@ -27,7 +27,7 @@ def test_simular_sustituye_a_ble_y_ganchos():
     procs = procesos_demo(
         simular=True, rostros=False, ganchos=[lambda: nucleo, lambda: None]
     )
-    assert [p.nombre for p in procs] == ["panel", "simulador", "nucleo"]
+    assert [p.nombre for p in procs] == ["panel", "visor", "simulador", "nucleo"]
 
 
 def test_detener_termina_a_todos():

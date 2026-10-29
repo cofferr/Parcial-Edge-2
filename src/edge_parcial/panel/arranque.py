@@ -32,6 +32,7 @@ log = logging.getLogger("edge_parcial.panel")
 
 # Componente del estado.json que cubre cada proceso hijo.
 COMPONENTE_DE = {"ble": "ble", "rostros": "servicio_rostros", "nucleo": "nucleo"}
+PROCESOS_PROPIOS = ("edge_parcial", "t2_nucleo", "simular_datos")
 
 
 @dataclass(frozen=True)
