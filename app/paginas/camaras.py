@@ -3,6 +3,7 @@
 import streamlit as st
 
 from edge_parcial.panel.consultas import estado_por_fuente
+from edge_parcial.panel.control import quorum_activo
 from edge_parcial.panel.datos import FUENTES, rutas_por_defecto
 from edge_parcial.visor.servidor import HOST, PUERTO
 
@@ -28,8 +29,11 @@ def _leyenda(fuente: str) -> None:
 
 @st.fragment(run_every=1)
 def _alerta() -> None:
-    _, alerta = estado_por_fuente(rutas_por_defecto())
-    if alerta:
+    rutas = rutas_por_defecto()
+    _, alerta = estado_por_fuente(rutas)
+    if not quorum_activo(rutas.control):
+        st.warning("Quórum desactivado: sin alertas ni reconocimiento")
+    elif alerta:
         st.error("ALERTA: quórum alcanzado en la última ventana")
 
 

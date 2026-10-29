@@ -69,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         publicador=publicador,
         despachador=despachador,
         ruta_telemetria=cfg.eventos_csv.parent / "telemetria.csv",
+        ruta_control=cfg.control_json,
     )
     parar = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: parar.set())

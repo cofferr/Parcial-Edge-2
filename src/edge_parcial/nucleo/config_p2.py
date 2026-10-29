@@ -16,6 +16,7 @@ from edge_parcial.edge.detector import ParamsDetector
 FUENTES = ("esp32", "droidcam", "local")
 EVENTOS_CSV_DEFECTO = "data/eventos.csv"
 ESTADO_JSON_DEFECTO = "data/estado.json"
+CONTROL_JSON_DEFECTO = "data/control.json"
 _OPCIONALES = (
     "umbral_global", "salto_luminancia", "umbral_oscuro", "tapada_s", "edad_ref_ms",
 )  # fmt: skip
@@ -31,6 +32,7 @@ class ConfigP2:
     detector: dict[str, ParamsDetector]
     eventos_csv: Path
     estado_json: Path
+    control_json: Path | None = None
 
 
 def params_detector(datos: dict, fuente: str) -> ParamsDetector:
@@ -78,6 +80,7 @@ def cargar_config_p2(
         detector={f: params_detector(datos, f) for f in fuentes},
         eventos_csv=RAIZ / str(rutas.get("eventos_csv", EVENTOS_CSV_DEFECTO)),
         estado_json=RAIZ / str(rutas.get("estado_json", ESTADO_JSON_DEFECTO)),
+        control_json=RAIZ / str(rutas.get("control_json", CONTROL_JSON_DEFECTO)),
     )
 
 

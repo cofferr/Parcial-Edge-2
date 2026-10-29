@@ -8,6 +8,7 @@ estado.json según docs/CONTRATO_DATOS.md y una línea de log por ventana.
 
 import threading
 from collections import deque
+from dataclasses import replace
 from pathlib import Path
 from time import perf_counter_ns
 
@@ -26,6 +27,7 @@ from edge_parcial.nucleo.salidas import (
     estado_completo,
     linea_log,
 )
+from edge_parcial.panel.control import MARCA_DESACTIVADO, quorum_activo
 from edge_parcial.panel.estado import fusionar_estado
 
 _FRESCURA_NS = 3_000_000_000  # una cámara sin fotogramas durante 3 s no está viva
@@ -51,6 +53,7 @@ class Nucleo:
         publicador=None,
         despachador=None,
         ruta_telemetria: Path | str | None = None,
+        ruta_control: Path | str | None = None,
     ) -> None:
         if len(entradas) != cfg.n_quorum or not set(entradas) <= set(FUENTES):
             raise ErrorNucleo(
@@ -81,6 +84,7 @@ class Nucleo:
         if despachador is not None:
             despachador.error = self.anotar_error
         self.evidencia = LectorEvidenciaPIR(ruta_telemetria)
+        self.ruta_control = ruta_control
 
     # -- ciclo de vida ------------------------------------------------------
 
@@ -151,19 +155,24 @@ class Nucleo:
     # -- decisión y salidas ---------------------------------------------------
 
     def _al_decidir(self, d: Decision) -> None:
-        self.ultima = d
-        self.historial.append(d)
+        # Quórum desactivado desde el panel (control.json): los votos se calculan y se
+        # registran igual, pero no hay alerta ni reconocimiento y la ventana queda marcada.
+        activo = quorum_activo(self.ruta_control)
+        efectiva = d if activo else replace(d, alerta=False)
+        marca = "" if activo else MARCA_DESACTIVADO
+        self.ultima = efectiva
+        self.historial.append(d)  # la decisión medida, sin tocar
         if self.capas is not None:
             self.capas.decision(d)
         try:
-            self.eventos.escribir(d, evidencia=self.evidencia.nueva())
+            self.eventos.escribir(efectiva, marca, self.evidencia.nueva())
         except OSError as e:
             self._errores.append(f"eventos.csv: {e}")
-        if d.alerta and self.despachador is not None:
+        if efectiva.alerta and self.despachador is not None:
             # Fotogramas de las fuentes que votaron movimiento -> servicio de rostros.
             votantes = [f for f, v in d.votos.items() if v.voto]
             self.despachador.disparar(d.ventana, votantes)
-        self.consola(linea_log(d, self.fuentes))
+        self.consola(linea_log(efectiva, self.fuentes))
 
     def estado_visual(self) -> dict:
         """Última decisión e imagen de cada fuente (para la superposición `--ventanas`)."""

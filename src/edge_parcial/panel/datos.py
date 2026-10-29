@@ -62,6 +62,10 @@ class Rutas:
         return self.base / "reconocimientos.csv"
 
     @property
+    def control(self) -> Path:
+        return self.base / "control.json"
+
+    @property
     def estado(self) -> Path:
         return self.base / "estado.json"
 

@@ -12,6 +12,7 @@ from datetime import datetime
 import cv2
 import numpy as np
 
+from edge_parcial.panel.control import MARCA_DESACTIVADO, quorum_activo
 from edge_parcial.panel.datos import (
     COLUMNAS_EVENTOS,
     COLUMNAS_RECONOCIMIENTOS,
@@ -90,7 +91,8 @@ class Simulador:
         p = 0.8 if movimiento else 0.05
         votos = {f: int(r.random() < p) for f in FUENTES}
         n_true = sum(votos.values())
-        alerta = int(n_true >= 2)
+        activo = quorum_activo(self.rutas.control)
+        alerta = int(n_true >= 2 and activo)
 
         ts = ahora.isoformat(timespec="seconds")
         foto = ""
@@ -137,6 +139,7 @@ class Simulador:
                 "Q": round(n_true / len(FUENTES), 3),
                 "n_true": n_true,
                 "alerta": alerta,
+                "marca": "" if activo else MARCA_DESACTIVADO,
             }
         )
         self.publicar_vivo(ahora)

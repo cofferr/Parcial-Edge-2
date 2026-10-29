@@ -6,6 +6,7 @@ from edge_parcial.config import ErrorConfig
 from edge_parcial.panel import arranque
 from edge_parcial.panel.ajustes import guardar_ips, leer_ips
 from edge_parcial.panel.consultas import estado_componentes
+from edge_parcial.panel.control import escribir_quorum_activo, quorum_activo
 from edge_parcial.panel.datos import rutas_por_defecto
 
 ETIQUETAS = {
@@ -54,6 +55,29 @@ def _conexion() -> None:
     _componentes(gestor.caidos())
 
 
+def _quorum() -> None:
+    """Interruptor del quórum (escribe control.json; el núcleo lo lee al cerrar cada ventana)."""
+    ruta = rutas_por_defecto().control
+    activo = quorum_activo(ruta)
+    nuevo = st.toggle("Quórum activo", value=activo, key="quorum_activo")
+    if nuevo != activo:
+        try:
+            escribir_quorum_activo(ruta, nuevo)
+        except OSError as e:
+            st.error(f"No se pudo escribir control.json: {e}")
+    if nuevo:
+        st.caption("Alertas y reconocimiento habilitados.")
+    else:
+        st.warning("Quórum DESACTIVADO: se registran los votos pero no hay alertas.")
+
+
+@st.fragment(run_every=2)
+def _estado_quorum() -> None:
+    """Estado visible aunque otra pestaña cambie el interruptor."""
+    activo = quorum_activo(rutas_por_defecto().control)
+    st.markdown(f"**Quórum:** {'🟢 activo' if activo else '🟠 desactivado'}")
+
+
 def _control(gestor: arranque.Arranque) -> None:
     if arranque.orquestado_externamente():
         st.caption("Componentes lanzados por scripts/demo.py.")
@@ -91,6 +115,8 @@ def dibujar() -> None:
             arranque.obtener().iniciar()  # una sola vez; si otro servidor es dueño, no hace nada
         st.subheader("Conexión")
         _conexion()
+        _quorum()
+        _estado_quorum()
         st.divider()
         _control(arranque.obtener())
         _ips()
