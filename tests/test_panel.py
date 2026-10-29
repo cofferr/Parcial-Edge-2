@@ -138,7 +138,7 @@ def test_capturas_del_pir_aparecen_en_vivo(datos):
     import cv2
     import numpy as np
 
-    ok, buf = cv2.imencode(".jpg", np.full((20, 20, 3), 90, np.uint8))
+    _ok, buf = cv2.imencode(".jpg", np.full((20, 20, 3), 90, np.uint8))
     (datos.snapshots / "pir_esp32_20261028_201223.jpg").write_bytes(buf.tobytes())
     (datos.base / "telemetria.csv").write_text(
         "timestamp,temperatura_c,humedad_pct,suelo_adc,movimiento,foto,trama_hex,session_id\n"
