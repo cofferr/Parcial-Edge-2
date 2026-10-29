@@ -7,6 +7,7 @@ La fuente BLE es una interfaz (`FuenteBle`) para poder probar con un cliente sim
 import asyncio
 import contextlib
 import logging
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,6 +18,8 @@ from edge_parcial.ble.telemetria import EscritorTelemetria
 from edge_parcial.ble.trama import TramaInvalida, decodificar
 from edge_parcial.csv_anexar import ruta_libre
 from edge_parcial.panel.estado import actualizar_componente, ahora_iso, entrada
+from edge_parcial.rostros.anotar import anotar_jpeg
+from edge_parcial.rostros.cliente import consultar_servicio
 from edge_parcial.visor.cliente import obtener_ultimo
 
 log = logging.getLogger("edge_parcial.ble")
@@ -35,6 +38,8 @@ class ParamsBle:
     # abre ninguna conexión a las cámaras). Vacío = sin foto.
     fuente_foto: str = ""
     max_edad_foto_s: float = 2.0
+    # Dibuja el nombre sobre la captura del PIR (hilo aparte; guarda `<foto>_reconocido.jpg`).
+    reconocer_pir: bool = True
     carpeta_fotos: Path = Path("data/snapshots")
 
 
@@ -82,8 +87,10 @@ class Gateway:
         ruta_estado: Path | str,
         params: ParamsBle | None = None,
         reloj: Callable[[], datetime] | None = None,
+        consultar: Callable[[bytes, str], list[dict]] = consultar_servicio,
     ) -> None:
         self.fuente = fuente
+        self._consultar = consultar
         self.escritor = escritor
         self.ruta_estado = Path(ruta_estado)
         self.params = params or ParamsBle()
@@ -129,7 +136,30 @@ class Gateway:
         except OSError as e:
             self._error(f"No se pudo guardar la evidencia: {e}")
             return ""
+        if self.params.reconocer_pir:
+            threading.Thread(
+                target=self._anotar,
+                args=(destino, jpeg, fuente),
+                name="pir-rostros",
+                daemon=True,
+            ).start()
         return nombre
+
+    def _anotar(self, destino: Path, jpeg: bytes, fuente: str) -> None:
+        """Reconoce la captura y guarda aparte la versión con los cuadros (el original queda)."""
+        try:
+            caras = self._consultar(jpeg, fuente)
+            if not caras:
+                return
+            anotada = anotar_jpeg(jpeg, caras)
+            if anotada is not None:
+                ruta_libre(
+                    destino.with_name(f"{destino.stem}_reconocido.jpg")
+                ).write_bytes(anotada)
+        except (OSError, ValueError) as e:
+            self._error(
+                f"Reconocimiento de la captura del PIR: {type(e).__name__}: {e}"
+            )
 
     def _al_conectar(self) -> None:
         self.conectado = True

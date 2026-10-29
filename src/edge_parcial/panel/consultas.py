@@ -138,7 +138,14 @@ def capturas_pir(rutas: Rutas, n: int = 12) -> list[CapturaPir]:
         ruta = rutas.snapshots / nombre
         if fila.movimiento == "1" and nombre.startswith("pir_") and ruta.is_file():
             fuente = nombre.split("_")[1] if nombre.count("_") >= 2 else "—"
-            salida.append(CapturaPir(ruta, fuente, fila.timestamp))
+            reconocida = ruta.with_name(
+                f"{ruta.stem}_reconocido.jpg"
+            )  # con el nombre dibujado
+            salida.append(
+                CapturaPir(
+                    reconocida if reconocida.is_file() else ruta, fuente, fila.timestamp
+                )
+            )
         if len(salida) == n:
             break
     return salida

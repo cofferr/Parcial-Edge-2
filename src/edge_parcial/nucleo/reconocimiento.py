@@ -5,8 +5,6 @@ corre en un hilo aparte para no retrasar la decisión de la siguiente ventana; s
 anterior sigue en curso, la nueva alerta se descarta (y se anota), nunca se encola.
 """
 
-import http.client
-import json
 import threading
 from collections.abc import Callable
 from datetime import datetime
@@ -14,26 +12,10 @@ from pathlib import Path
 
 from edge_parcial.csv_anexar import ruta_libre
 from edge_parcial.panel.datos import COLUMNAS_RECONOCIMIENTOS, EscritorCSV
-from edge_parcial.rostros.servicio import HOST, PUERTO
+from edge_parcial.rostros.anotar import anotar_jpeg
+from edge_parcial.rostros.cliente import consultar_servicio
 
 MAX_EDAD_S = 2.0  # el fotograma de la fuente no puede ser más viejo que esto
-TIMEOUT_S = 15.0  # el reconocimiento facial (dlib) puede tardar
-
-
-def consultar_servicio(jpeg: bytes, fuente: str, puerto: int = PUERTO) -> list[dict]:
-    """POST /reconocer: devuelve las caras. Lanza OSError/ValueError si falla."""
-    con = http.client.HTTPConnection(HOST, puerto, timeout=TIMEOUT_S)
-    try:
-        con.request(
-            "POST", f"/reconocer?fuente={fuente}", jpeg, {"Content-Type": "image/jpeg"}
-        )
-        r = con.getresponse()
-        cuerpo = r.read()
-    finally:
-        con.close()
-    if r.status != 200:
-        raise OSError(f"servicio de rostros respondió {r.status}")
-    return list(json.loads(cuerpo).get("caras", []))
 
 
 class DespachadorRostros:
@@ -98,7 +80,16 @@ class DespachadorRostros:
             self.carpeta.mkdir(parents=True, exist_ok=True)
             destino = ruta_libre(self.carpeta / archivo)
             archivo = destino.name
-            destino.write_bytes(jpeg)
+            anotada = anotar_jpeg(jpeg, caras)
+            if anotada is not None:
+                # La foto de evidencia lleva el cuadro con el nombre; el original se conserva.
+                destino.write_bytes(anotada)
+                original = ruta_libre(
+                    destino.with_name(f"{destino.stem}_sin_anotar.jpg")
+                )
+                original.write_bytes(jpeg)
+            else:
+                destino.write_bytes(jpeg)
         except OSError as e:
             self.error(f"snapshot: {e}")
             return

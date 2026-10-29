@@ -29,7 +29,9 @@ def _trama(mov: int) -> bytes:
 
 def _gw(tmp_path, monkeypatch, jpeg):
     monkeypatch.setattr(modulo_gateway, "obtener_ultimo", lambda fuente, max_edad: jpeg)
-    params = ParamsBle(fuente_foto="esp32", carpeta_fotos=tmp_path / "s")
+    params = ParamsBle(
+        fuente_foto="esp32", carpeta_fotos=tmp_path / "s", reconocer_pir=False
+    )
     reloj = lambda: datetime(2026, 10, 28, 19, 0, 0).astimezone()
     return Gateway(
         None, EscritorTelemetria(tmp_path / "t.csv"), tmp_path / "e.json", params, reloj
