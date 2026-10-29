@@ -52,6 +52,7 @@ class Nucleo:
         latido_s: float = 1.0,
         publicador=None,
         despachador=None,
+        continuo=None,
         ruta_telemetria: Path | str | None = None,
         ruta_control: Path | str | None = None,
     ) -> None:
@@ -81,6 +82,9 @@ class Nucleo:
         self._iniciado = False
         self.publicador = publicador
         self.despachador = despachador
+        self.continuo = continuo
+        if continuo is not None:
+            continuo.ventana_actual = lambda: self.ultima.ventana if self.ultima else ""
         if despachador is not None:
             despachador.error = self.anotar_error
         self.evidencia = LectorEvidenciaPIR(ruta_telemetria)
@@ -114,6 +118,8 @@ class Nucleo:
         for f in self.fuentes:
             self.entradas[f].iniciar(self.trabajadores[f].encolar)
         self._iniciado = True
+        if self.continuo is not None:
+            self.continuo.iniciar()
         if self.publicador is not None:
             self.publicador.iniciar()
             if "local" in self.trabajadores:
@@ -124,6 +130,8 @@ class Nucleo:
                 )
 
     def detener(self) -> None:
+        if self.continuo is not None:
+            self.continuo.detener()
         if self.publicador is not None:
             self.publicador.detener()
         for e in self.entradas.values():

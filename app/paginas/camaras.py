@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from edge_parcial.panel.consultas import estado_por_fuente
+from edge_parcial.panel.consultas import estado_por_fuente, presentes
 from edge_parcial.panel.control import quorum_activo
 from edge_parcial.panel.datos import FUENTES, rutas_por_defecto
 from edge_parcial.visor.servidor import HOST, PUERTO
@@ -24,7 +24,11 @@ def _leyenda(fuente: str) -> None:
     estados, _ = estado_por_fuente(rutas_por_defecto())
     e = estados[fuente]
     voto = {True: "voto: sí", False: "voto: no", None: "voto: —"}[e.voto]
-    st.markdown(f"**{ETIQUETA[fuente]}** · {ICONO[e.estado]} {e.estado} · {voto}")
+    quien = presentes(rutas_por_defecto())[fuente]
+    visto = f" · 👤 {', '.join(quien)}" if quien else ""
+    st.markdown(
+        f"**{ETIQUETA[fuente]}** · {ICONO[e.estado]} {e.estado} · {voto}{visto}"
+    )
 
 
 @st.fragment(run_every=1)

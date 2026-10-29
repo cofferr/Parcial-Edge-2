@@ -272,6 +272,7 @@ def valores_distintos(df: pd.DataFrame, columna: str) -> list[str]:
 # -- alerta visible y unión alerta <-> reconocimiento ---------------------------------------
 
 NOMBRE_DESCONOCIDO = "DESCONOCIDO"
+SIN_ROSTRO = "sin_rostro"  # fila de una fuente que votó pero no mostró ningún rostro
 
 
 def _nombre(identidad: str) -> str:
@@ -324,23 +325,28 @@ def alerta_activa(
         return None
     sesion = str(fila.get("session_id", "") or "")
     rec = leer_csv(rutas.reconocimientos, ultimas=40)
-    nombres, snap = [], None
+    nombres, snap, vistas = [], None, 0
     if not rec.empty and {"ventana_ref", "identidad"} <= set(rec.columns):
         mismos = rec[rec["ventana_ref"].astype(str) == str(fila["ventana"])]
         if sesion and "session_id" in mismos.columns:
             mismos = mismos[mismos["session_id"].fillna("") == sesion]
         for r in mismos.itertuples():
-            n = _nombre(r.identidad)
-            if n not in nombres:
-                nombres.append(n)
+            vistas += 1
+            if r.identidad != SIN_ROSTRO:
+                n = _nombre(r.identidad)
+                if n not in nombres:
+                    nombres.append(n)
             ruta = rutas.snapshots / Path(str(r.snapshot)).name
-            if ruta.is_file():
+            if ruta.is_file() and (snap is None or r.identidad != SIN_ROSTRO):
                 snap = ruta
-    estado = (
-        "identificado"
-        if nombres
-        else ("reconociendo" if edad < espera_rostro_s else "sin_rostro")
-    )
+    if nombres:
+        estado = "identificado"
+    elif vistas or edad >= espera_rostro_s:
+        estado = (
+            "sin_rostro"  # el servicio ya respondió (o no a tiempo): nadie a la vista
+        )
+    else:
+        estado = "reconociendo"
     try:
         n_true, q = int(float(fila.get("n_true", 0))), int(float(fila.get("Q", 0)))
     except ValueError:
@@ -392,10 +398,12 @@ def unir_alertas(
                 & ((t_rec - t_a).abs() <= pd.Timedelta(seconds=tolerancia_s))
             ]
             for r in cerca.itertuples():
-                n = _nombre(r.identidad)
-                if n not in nombres:
-                    nombres.append(n)
-                snap = snap or str(r.snapshot)
+                if r.identidad != SIN_ROSTRO:
+                    n = _nombre(r.identidad)
+                    if n not in nombres:
+                        nombres.append(n)
+                if r.identidad != SIN_ROSTRO or not snap:
+                    snap = str(r.snapshot)
         filas.append(
             {
                 "ts_wall": a.ts_wall,
@@ -408,3 +416,27 @@ def unir_alertas(
             }
         )
     return pd.DataFrame(filas, columns=columnas)
+
+
+def presentes(
+    rutas: Rutas, ahora: datetime | None = None, ventana_s: float = 6.0
+) -> dict[str, list[str]]:
+    """Quién se ve ahora en cada fuente (filas de reconocimientos de los últimos `ventana_s` s)."""
+    ahora = ahora or datetime.now().astimezone()
+    salida: dict[str, list[str]] = {f: [] for f in FUENTES}
+    rec = leer_csv(rutas.reconocimientos, ultimas=40)
+    if rec.empty or not {"ts_wall", "fuente", "identidad"} <= set(rec.columns):
+        return salida
+    for r in rec.itertuples():
+        if r.fuente not in salida or r.identidad == SIN_ROSTRO:
+            continue
+        try:
+            ts = datetime.fromisoformat(str(r.ts_wall))
+            if ts.tzinfo is None:
+                ts = ts.astimezone()
+        except ValueError:
+            continue
+        n = _nombre(r.identidad)
+        if 0 <= (ahora - ts).total_seconds() <= ventana_s and n not in salida[r.fuente]:
+            salida[r.fuente].append(n)
+    return salida

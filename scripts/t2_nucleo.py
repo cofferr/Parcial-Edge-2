@@ -20,7 +20,10 @@ from edge_parcial.config import RUTA_CONFIG, ErrorConfig
 from edge_parcial.nucleo.config_p2 import cargar_config_p2
 from edge_parcial.nucleo.fuentes import construir_entradas
 from edge_parcial.nucleo.nucleo import Nucleo
-from edge_parcial.nucleo.reconocimiento import DespachadorRostros
+from edge_parcial.nucleo.reconocimiento import (
+    DespachadorRostros,
+    ReconocimientoContinuo,
+)
 from edge_parcial.nucleo.ventanas import ejecutar_ventanas
 from edge_parcial.visor.cliente import PublicadorVisor
 
@@ -30,6 +33,9 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     ap.add_argument("--ventanas", action="store_true")
+    ap.add_argument(
+        "--sin-continuo", action="store_true", help="reconoce solo ante una alerta"
+    )
     ap.add_argument("--sin-visor", action="store_true", help="no publica al visor")
     ap.add_argument("--config", type=Path, default=RUTA_CONFIG)
     ap.add_argument(
@@ -59,6 +65,11 @@ def main(argv: list[str] | None = None) -> int:
             cfg.eventos_csv.parent / "reconocimientos.csv",
             lambda m: print(f"[rostros] {m}", file=sys.stderr),
         )
+    continuo = (
+        ReconocimientoContinuo(despachador)
+        if despachador is not None and not args.sin_continuo
+        else None
+    )
     nucleo = Nucleo(
         cfg,
         construir_entradas(cfg.base, publicador=publicador),
@@ -68,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         capas=capas,
         publicador=publicador,
         despachador=despachador,
+        continuo=continuo,
         ruta_telemetria=cfg.eventos_csv.parent / "telemetria.csv",
         ruta_control=cfg.control_json,
     )
