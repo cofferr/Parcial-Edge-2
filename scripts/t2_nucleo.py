@@ -20,6 +20,7 @@ from edge_parcial.config import RUTA_CONFIG, ErrorConfig
 from edge_parcial.nucleo.config_p2 import cargar_config_p2
 from edge_parcial.nucleo.fuentes import construir_entradas
 from edge_parcial.nucleo.nucleo import Nucleo
+from edge_parcial.nucleo.reconocimiento import DespachadorRostros
 from edge_parcial.nucleo.ventanas import ejecutar_ventanas
 from edge_parcial.visor.cliente import PublicadorVisor
 
@@ -50,6 +51,14 @@ def main(argv: list[str] | None = None) -> int:
     capas = RegistroCapas(args.capas) if args.capas else None
     # El visor MJPEG es accesorio: si no está, el núcleo sigue (los envíos fallan en silencio).
     publicador = None if args.sin_visor else PublicadorVisor()
+    despachador = None
+    if publicador is not None:
+        despachador = DespachadorRostros(
+            publicador.ultimo,
+            cfg.base.snapshots_dir,
+            cfg.eventos_csv.parent / "reconocimientos.csv",
+            lambda m: print(f"[rostros] {m}", file=sys.stderr),
+        )
     nucleo = Nucleo(
         cfg,
         construir_entradas(cfg.base, publicador=publicador),
@@ -58,6 +67,8 @@ def main(argv: list[str] | None = None) -> int:
         cfg.estado_json,
         capas=capas,
         publicador=publicador,
+        despachador=despachador,
+        ruta_telemetria=cfg.eventos_csv.parent / "telemetria.csv",
     )
     parar = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: parar.set())

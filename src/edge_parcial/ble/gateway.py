@@ -13,10 +13,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
-from edge_parcial.ble.foto import guardar_foto
 from edge_parcial.ble.telemetria import EscritorTelemetria
 from edge_parcial.ble.trama import TramaInvalida, decodificar
 from edge_parcial.panel.estado import actualizar_componente, ahora_iso, entrada
+from edge_parcial.visor.cliente import obtener_ultimo
 
 log = logging.getLogger("edge_parcial.ble")
 
@@ -30,8 +30,10 @@ class ParamsBle:
     backoff_inicial_s: float = 1.0
     backoff_max_s: float = 30.0
     latido_s: float = 1.0
-    # Cámara a la que se pide la foto cuando hay movimiento; vacío = sin foto.
-    url_foto: str = ""
+    # Evidencia del PIR: último fotograma de esta fuente que comparte el visor (el BLE no
+    # abre ninguna conexión a las cámaras). Vacío = sin foto.
+    fuente_foto: str = ""
+    max_edad_foto_s: float = 2.0
     carpeta_fotos: Path = Path("data/snapshots")
 
 
@@ -103,22 +105,27 @@ class Gateway:
             return
         ahora = self._reloj()
         foto = ""
-        if lectura.movimiento == 1 and self.params.url_foto:
-            foto = f"foto_{ahora.strftime('%Y%m%d_%H%M%S')}.jpg"
-            self._pedir_foto(foto)
+        if lectura.movimiento == 1 and self.params.fuente_foto:
+            foto = self._guardar_evidencia(ahora)
         self.escritor.agregar(ahora, lectura, datos, foto)
         self.lecturas += 1
         self.ultima_marca = ahora.isoformat(timespec="milliseconds")
 
-    def _pedir_foto(self, nombre: str) -> None:
-        # En otro hilo: la petición HTTP no debe frenar la recepción de tramas BLE.
-        def tarea() -> None:
-            try:
-                guardar_foto(self.params.url_foto, self.params.carpeta_fotos / nombre)
-            except Exception as e:  # noqa: BLE001 - la foto es accesoria
-                self._error(f"No se pudo guardar la foto: {e}")
-
-        asyncio.get_running_loop().run_in_executor(None, tarea)
+    def _guardar_evidencia(self, ahora: datetime) -> str:
+        """Guarda el último fotograma compartido; devuelve el nombre o «» (con error anotado)."""
+        fuente = self.params.fuente_foto
+        jpeg = obtener_ultimo(fuente, self.params.max_edad_foto_s)
+        if jpeg is None:
+            self._error(f"Sin fotograma reciente de {fuente} para la evidencia del PIR")
+            return ""
+        nombre = f"pir_{fuente}_{ahora:%Y%m%d_%H%M%S}.jpg"
+        try:
+            self.params.carpeta_fotos.mkdir(parents=True, exist_ok=True)
+            (self.params.carpeta_fotos / nombre).write_bytes(jpeg)
+        except OSError as e:
+            self._error(f"No se pudo guardar la evidencia: {e}")
+            return ""
+        return nombre
 
     def _al_conectar(self) -> None:
         self.conectado = True

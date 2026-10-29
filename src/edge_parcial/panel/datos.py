@@ -26,6 +26,9 @@ COLUMNAS_EVENTOS = [
     "Q",
     "n_true",
     "alerta",
+    "marca",
+    "evidencia_fuente",
+    "evidencia_foto",
 ]
 COLUMNAS_RECONOCIMIENTOS = [
     "ts_wall",

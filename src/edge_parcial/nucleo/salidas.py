@@ -20,7 +20,10 @@ COLUMNAS_EVENTOS = [
     *[f"voto_{f}" for f in FUENTES],
     *[f"bandera_{f}" for f in FUENTES],
     "Q", "n_true", "alerta",
+    "marca", "evidencia_fuente", "evidencia_foto",
 ]  # fmt: skip
+# Cabecera anterior (sin las tres columnas finales): se conserva el archivo viejo aparte.
+COLUMNAS_EVENTOS_V1 = COLUMNAS_EVENTOS[:-3]
 COMPONENTES_ESTADO = (
     "camara_esp32", "camara_droidcam", "camara_local", "ble", "servicio_rostros", "nucleo",
 )  # fmt: skip
@@ -41,7 +44,12 @@ class EventosCSV:
         if not nuevo:
             with open(self.ruta, encoding="utf-8", newline="") as f:
                 cab = next(csv.reader(f), [])
-            if cab != COLUMNAS_EVENTOS:
+            if cab == COLUMNAS_EVENTOS_V1:
+                # Archivo con el esquema anterior: no se reescribe, se aparta y se empieza otro.
+                viejo = self.ruta.with_name(f"{self.ruta.stem}.v1-{datetime.now():%Y%m%d-%H%M%S}.csv")  # fmt: skip
+                self.ruta.rename(viejo)
+                nuevo = True
+            elif cab != COLUMNAS_EVENTOS:
                 raise ErrorEsquema(
                     f"{self.ruta} tiene una cabecera distinta del contrato"
                 )
@@ -52,8 +60,12 @@ class EventosCSV:
             self._f.flush()
         self._lock = threading.Lock()
 
-    def escribir(self, d: Decision) -> None:
+    def escribir(
+        self, d: Decision, marca: str = "", evidencia: tuple[str, str] = ("", "")
+    ) -> None:
+        """`marca`: p. ej. «quorum_desactivado»; `evidencia`: (fuente, archivo) del PIR."""
         fila = {
+            "marca": marca, "evidencia_fuente": evidencia[0], "evidencia_foto": evidencia[1],
             "run_id": self.run_id, "ts_wall": d.ts_wall, "ventana": d.ventana,
             "t_ventana_ini_ns": d.t_ini_ns, "Q": d.q, "n_true": d.n_true,
             "alerta": int(d.alerta),

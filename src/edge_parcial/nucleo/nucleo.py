@@ -16,6 +16,7 @@ from edge_parcial.fog.decision import Fog
 from edge_parcial.fog.quorum import quorum
 from edge_parcial.fog.rejilla import Rejilla
 from edge_parcial.nucleo.config_p2 import ConfigP2
+from edge_parcial.nucleo.evidencia import LectorEvidenciaPIR
 from edge_parcial.nucleo.modelo import Decision
 from edge_parcial.nucleo.salidas import (
     FUENTES,
@@ -48,6 +49,8 @@ class Nucleo:
         reloj=perf_counter_ns,
         latido_s: float = 1.0,
         publicador=None,
+        despachador=None,
+        ruta_telemetria: Path | str | None = None,
     ) -> None:
         if len(entradas) != cfg.n_quorum or not set(entradas) <= set(FUENTES):
             raise ErrorNucleo(
@@ -74,6 +77,10 @@ class Nucleo:
         self._hilo_latido: threading.Thread | None = None
         self._iniciado = False
         self.publicador = publicador
+        self.despachador = despachador
+        if despachador is not None:
+            despachador.error = self.anotar_error
+        self.evidencia = LectorEvidenciaPIR(ruta_telemetria)
 
     # -- ciclo de vida ------------------------------------------------------
 
@@ -138,6 +145,9 @@ class Nucleo:
     def __exit__(self, *args) -> None:
         self.detener()
 
+    def anotar_error(self, mensaje: str) -> None:
+        self._errores.append(mensaje)
+
     # -- decisión y salidas ---------------------------------------------------
 
     def _al_decidir(self, d: Decision) -> None:
@@ -146,9 +156,13 @@ class Nucleo:
         if self.capas is not None:
             self.capas.decision(d)
         try:
-            self.eventos.escribir(d)
+            self.eventos.escribir(d, evidencia=self.evidencia.nueva())
         except OSError as e:
             self._errores.append(f"eventos.csv: {e}")
+        if d.alerta and self.despachador is not None:
+            # Fotogramas de las fuentes que votaron movimiento -> servicio de rostros.
+            votantes = [f for f, v in d.votos.items() if v.voto]
+            self.despachador.disparar(d.ventana, votantes)
         self.consola(linea_log(d, self.fuentes))
 
     def estado_visual(self) -> dict:
