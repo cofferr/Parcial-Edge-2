@@ -6,7 +6,7 @@ from pathlib import Path
 
 import uvicorn
 
-from edge_parcial.rostros.reconocedor import crear_reconocedor
+from edge_parcial.rostros.reconocedor import CARPETA_ROSTROS, crear_reconocedor
 from edge_parcial.rostros.servicio import HOST, PUERTO, crear_app
 
 
@@ -18,7 +18,7 @@ def _factor(texto: str) -> tuple[str, float]:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Servicio HTTP de reconocimiento facial")
     ap.add_argument("--puerto", type=int, default=PUERTO)
-    ap.add_argument("--rostros", type=Path, default=Path("rostros_conocidos"))
+    ap.add_argument("--rostros", type=Path, default=CARPETA_ROSTROS)
     ap.add_argument("--estado", type=Path, default=Path("data/estado.json"))
     ap.add_argument(
         "--factor", type=_factor, action="append", default=[], metavar="FUENTE=F"

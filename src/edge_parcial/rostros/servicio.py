@@ -108,6 +108,12 @@ def crear_app(
                 status_code=400, detail="El cuerpo no es un JPEG válido"
             )
         factor = factores.get(fuente, FACTOR_OTRAS)
+        recargar = getattr(reconocedor, "recargar_si_cambio", None)
+        if recargar is not None:
+            try:
+                recargar()
+            except OSError as e:
+                stats.error(f"recarga de rostros: {e}")
         t0 = time.perf_counter()
         if factor != 1.0:
             imagen = cv2.resize(

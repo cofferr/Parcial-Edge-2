@@ -16,6 +16,7 @@ pagina = st.navigation(
     [
         st.Page(AQUI / "paginas" / "vivo.py", title="Vivo", default=True),
         st.Page(AQUI / "paginas" / "camaras.py", title="Cámaras"),
+        st.Page(AQUI / "paginas" / "registro.py", title="Registro"),
         st.Page(AQUI / "paginas" / "mediciones.py", title="Mediciones"),
     ]
 )

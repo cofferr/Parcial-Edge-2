@@ -12,6 +12,9 @@ from typing import Protocol
 
 import numpy as np
 
+from edge_parcial.config import RAIZ
+
+CARPETA_ROSTROS = RAIZ / "rostros_conocidos"  # fuera de git: son datos faciales
 log = logging.getLogger("edge_parcial.rostros")
 
 DESCONOCIDO = "desconocido"
@@ -63,24 +66,63 @@ class ReconocedorDlib:
 
         self._fr = face_recognition
         self.tolerancia = tolerancia
+        self.carpeta = Path(carpeta_rostros)
         self.nombres: list[str] = []
         self.encodings: list[np.ndarray] = []
-        self._cargar(Path(carpeta_rostros))
+        self._firma: tuple = ()
+        self._cargar()
 
-    def _cargar(self, carpeta: Path) -> None:
-        carpeta.mkdir(parents=True, exist_ok=True)
-        for archivo in sorted(carpeta.iterdir()):
-            if archivo.suffix.lower() not in EXTENSIONES_VALIDAS:
-                continue
+    def _archivos(self) -> list[tuple[str, Path]]:
+        """(identidad, archivo): `Ana.jpg` -> Ana; `Ana/1.jpg`, `Ana/2.jpg` -> Ana (muestras)."""
+        self.carpeta.mkdir(parents=True, exist_ok=True)
+        encontrados = []
+        for entrada in sorted(self.carpeta.iterdir()):
+            if entrada.is_dir():
+                encontrados += [
+                    (entrada.name, a)
+                    for a in sorted(entrada.iterdir())
+                    if a.suffix.lower() in EXTENSIONES_VALIDAS
+                ]
+            elif entrada.suffix.lower() in EXTENSIONES_VALIDAS:
+                encontrados.append((entrada.stem, entrada))
+        return encontrados
+
+    def _cargar(self) -> None:
+        archivos = self._archivos()
+        nombres, encodings = [], []
+        for identidad, archivo in archivos:
             with LOCK_DLIB:
                 imagen = self._fr.load_image_file(str(archivo))
-                encodings = self._fr.face_encodings(imagen)
-            if encodings:
-                self.nombres.append(archivo.stem)
-                self.encodings.append(encodings[0])
+                encs = self._fr.face_encodings(imagen)
+            if encs:
+                nombres.append(identidad)
+                encodings.append(encs[0])
             else:
                 log.warning("Sin rostro detectable en %s", archivo.name)
+        self.nombres, self.encodings = (
+            nombres,
+            encodings,
+        )  # reemplazo atómico de las listas
+        self._firma = self._firma_actual(archivos)
         log.info("Rostros conocidos cargados: %d", len(self.nombres))
+
+    @staticmethod
+    def _firma_actual(archivos: list[tuple[str, Path]]) -> tuple:
+        firma = []
+        for _, a in archivos:
+            try:
+                s = a.stat()
+            except OSError:
+                continue
+            firma.append((str(a), s.st_mtime_ns, s.st_size))
+        return tuple(firma)
+
+    def recargar_si_cambio(self) -> bool:
+        """Recarga los conocidos si cambió la carpeta (altas o bajas del panel, sin reiniciar)."""
+        if self._firma_actual(self._archivos()) == self._firma:
+            return False
+        self._cargar()
+        return True
 
     def reconocer(self, rgb: np.ndarray) -> list[Deteccion]:
         rgb = np.ascontiguousarray(rgb)
