@@ -43,3 +43,8 @@ informe/*.aux
 informe/*.log
 informe/*.toc
 informe/*.out
+
+# Estado de ejecución del panel (candado y pids de los hijos)
+data/.panel.*
+data/*.lock
+data/control.json

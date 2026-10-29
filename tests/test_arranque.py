@@ -150,4 +150,4 @@ def test_barra_marca_seis_componentes_con_semaforo(rutas):
     lateral = " ".join(m.value for m in at.sidebar.markdown)
     for etiqueta in ("BLE", "Núcleo", "ESP32-CAM", "DroidCam", "Cámara local"):
         assert etiqueta in lateral
-    assert lateral.count("🟢") == 6
+    assert lateral.count("🟢") == 7  # seis componentes + el estado del quórum
