@@ -56,3 +56,6 @@ data/_restaurado/
 data/*.restaurado-*
 data/*.antes-*
 data/eventos.v1-*
+data/*.csv
+data/estado.json
+data/estado.json.lock
